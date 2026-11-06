@@ -315,6 +315,10 @@ jobs:
           
                   @Volatile
                   var lastNote = ""
+          
+                  /** Gửi lệnh về màn hình chính. Trả về false nếu dịch vụ chưa chạy. */
+                  fun goHome(): Boolean =
+                      instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) ?: false
               }
           
               override fun onServiceConnected() {
@@ -434,6 +438,7 @@ jobs:
               private lateinit var permBtn: TextView
               private lateinit var infoBtn: TextView
               private lateinit var debug: TextView
+              private lateinit var testBtn: TextView
 
               private var summary: String = ""
               private var selectCount: Int = 0
@@ -588,6 +593,12 @@ jobs:
 
                   hint = tv("", 13f, cGray).apply { gravity = Gravity.CENTER }
                   root.addView(hint, lp(14))
+          
+                  testBtn = pillButton("Kiểm tra dịch vụ (tự về màn hình chính sau 3 giây)", cChip, cBlue, 44).apply {
+                      textSize = 13f
+                      setOnClickListener { runServiceTest() }
+                  }
+                  root.addView(testBtn, lp(12, dp(44)))
 
                   // Thẻ hướng dẫn bật quyền (chỉ hiện khi chưa bật)
                   permBtn = pillButton("Bật quyền Trợ năng", cAmber, Color.parseColor("#1A1306"), 48).apply {
@@ -742,6 +753,19 @@ jobs:
                   else String.format("%02d:%02d", m, sec)
               }
 
+              private fun runServiceTest() {
+                  if (LockService.instance == null) {
+                      Toast.makeText(
+                          this,
+                          "Dịch vụ Trợ năng KHÔNG chạy. Vào Cài đặt → Trợ năng, tắt rồi bật lại công tắc Block.",
+                          Toast.LENGTH_LONG
+                      ).show()
+                      return
+                  }
+                  Toast.makeText(this, "Sau 3 giây máy sẽ tự về màn hình chính…", Toast.LENGTH_SHORT).show()
+                  handler.postDelayed({ LockService.goHome() }, 3000L)
+              }
+          
               private fun setPill(text: String, fill: Int, textColor: Int) {
                   statusPill.text = text
                   statusPill.setTextColor(textColor)
@@ -757,6 +781,7 @@ jobs:
                   debug.text = "Chẩn đoán: dịch vụ $running, nhận ${LockService.events} sự kiện\n" +
                       "App mở gần nhất: ${LockService.lastPkg} → ${LockService.lastNote}"
                   appsText.text = summary
+                  testBtn.visibility = if (remaining > 0L) View.GONE else View.VISIBLE
 
                   if (remaining > 0L) {
                       setPill("ĐANG KHÓA", cRed, Color.WHITE)

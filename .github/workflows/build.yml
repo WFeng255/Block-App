@@ -53,9 +53,27 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+              <!-- Cho phép app liệt kê các app có biểu tượng trên màn hình để người dùng tick chọn. -->
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.HOME" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.DIAL" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.settings.SETTINGS" />
+                  </intent>
+              </queries>
+
               <application
                   android:allowBackup="false"
-                  android:label="Khóa MT5"
+                  android:label="Khóa App"
                   android:theme="@android:style/Theme.Material.NoActionBar">
 
                   <activity
@@ -71,7 +89,7 @@ jobs:
                   <service
                       android:name=".LockService"
                       android:exported="false"
-                      android:label="Khóa MT5"
+                      android:label="Khóa App"
                       android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
                       <intent-filter>
                           <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -94,14 +112,13 @@ jobs:
               android:accessibilityFlags="flagDefault"
               android:canRetrieveWindowContent="false"
               android:notificationTimeout="50"
-              android:packageNames="net.metaquotes.metatrader5"
               android:description="@string/service_desc" />
           KHOAEOF
           mkdir -p app/src/main/res/values
           cat > app/src/main/res/values/strings.xml <<'KHOAEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
-              <string name="service_desc">Chỉ theo dõi việc mở MetaTrader 5. Khi đang trong thời gian khóa, dịch vụ này đưa bạn về màn hình chính mỗi lần mở MT5. Không đọc nội dung màn hình, không thu thập dữ liệu.</string>
+              <string name="service_desc">Chỉ theo dõi việc mở các app bạn đã chọn khóa. Khi đang trong thời gian khóa, dịch vụ này đưa bạn về màn hình chính mỗi lần mở một app trong danh sách. Không đọc nội dung màn hình, không thu thập dữ liệu.</string>
           </resources>
           KHOAEOF
           mkdir -p app/src/main/java/com/khoamt5/app
@@ -109,10 +126,12 @@ jobs:
           package com.khoamt5.app
 
           import android.content.Context
+          import android.content.Intent
+          import android.provider.Settings
 
           /**
-           * Lưu thời điểm hết khóa vào SharedPreferences nên vẫn còn khóa
-           * khi tắt app, vuốt app khỏi đa nhiệm hoặc khởi động lại máy.
+           * Lưu thời điểm hết khóa và danh sách app bị khóa vào SharedPreferences
+           * nên vẫn còn khóa khi tắt app, vuốt app khỏi đa nhiệm hoặc khởi động lại máy.
            */
           object LockStore {
               const val MT5_PACKAGE = "net.metaquotes.metatrader5"
@@ -125,6 +144,7 @@ jobs:
               private const val KEY_STARTED = "started"
               private const val KEY_UNTIL = "until"
               private const val KEY_SELECTED = "selected"
+              private const val KEY_PACKAGES = "packages"
 
               private fun prefs(c: Context) =
                   c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -140,6 +160,49 @@ jobs:
 
               fun setSelectedIndex(c: Context, index: Int) {
                   prefs(c).edit().putInt(KEY_SELECTED, index.coerceIn(0, STEPS_MIN.size - 1)).apply()
+              }
+
+              /** Danh sách app sẽ bị khóa. Mặc định chỉ có MetaTrader 5. */
+              fun lockedPackages(c: Context): Set<String> =
+                  prefs(c).getStringSet(KEY_PACKAGES, null)?.toSet() ?: setOf(MT5_PACKAGE)
+
+              /** Đổi danh sách app. Đang khóa thì không cho đổi. */
+              fun setLockedPackages(c: Context, packages: Set<String>) {
+                  if (remainingMs(c) > 0L) return
+                  prefs(c).edit().putStringSet(KEY_PACKAGES, HashSet(packages)).apply()
+              }
+
+              /**
+               * App không bao giờ bị khóa, để khỏi mất đường gọi khẩn cấp
+               * hoặc kẹt không thoát được ra màn hình chính / cài đặt.
+               */
+              fun protectedPackages(c: Context): Set<String> {
+                  val pm = c.packageManager
+                  val result = mutableSetOf(
+                      c.packageName,
+                      "com.android.systemui",
+                      "com.android.settings",
+                      "com.android.phone",
+                      "com.android.emergency",
+                      "com.android.server.telecom",
+                      "com.android.dialer",
+                      "com.google.android.dialer",
+                      "com.samsung.android.dialer",
+                      "com.android.incallui",
+                      "com.samsung.android.incallui",
+                      "com.android.contacts",
+                      "com.google.android.contacts"
+                  )
+                  fun addAll(intent: Intent) {
+                      try {
+                          pm.queryIntentActivities(intent, 0).forEach { result.add(it.activityInfo.packageName) }
+                      } catch (_: Exception) {
+                      }
+                  }
+                  addAll(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME))
+                  addAll(Intent(Intent.ACTION_DIAL))
+                  addAll(Intent(Settings.ACTION_SETTINGS))
+                  return result
               }
 
               /** Bắt đầu khóa. Đang khóa rồi thì không làm gì (không thể kéo dài hay rút ngắn). */
@@ -175,20 +238,24 @@ jobs:
           import android.view.accessibility.AccessibilityEvent
 
           /**
-           * Chỉ nghe sự kiện đổi cửa sổ của MetaTrader 5 (xem accessibility_service_config.xml).
-           * Đang trong thời gian khóa mà MT5 hiện lên thì đẩy về màn hình chính.
+           * Nghe sự kiện đổi cửa sổ. Chỉ phản ứng khi app vừa hiện lên nằm trong danh sách
+           * app bị khóa và đang trong thời gian khóa: đẩy về màn hình chính.
+           * Không đọc nội dung màn hình (canRetrieveWindowContent = false).
            */
           class LockService : AccessibilityService() {
 
               private var lastLaunch = 0L
+              private val protectedPkgs by lazy { LockStore.protectedPackages(this) }
 
               override fun onAccessibilityEvent(event: AccessibilityEvent?) {
                   if (event == null) return
                   if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-                  if (event.packageName?.toString() != LockStore.MT5_PACKAGE) return
+                  val pkg = event.packageName?.toString() ?: return
+                  if (pkg !in LockStore.lockedPackages(this)) return
+                  if (pkg in protectedPkgs) return
                   if (LockStore.remainingMs(this) <= 0L) return
 
-                  // Bước chắc chắn: đẩy MT5 ra màn hình chính.
+                  // Bước chắc chắn: đẩy app ra màn hình chính.
                   performGlobalAction(GLOBAL_ACTION_HOME)
 
                   // Thêm: mở màn hình đếm ngược của app (có thể bị hệ thống chặn, không sao).
@@ -227,6 +294,7 @@ jobs:
           import android.view.View
           import android.widget.Button
           import android.widget.LinearLayout
+          import android.widget.ScrollView
           import android.widget.TextView
           import android.widget.Toast
 
@@ -236,6 +304,8 @@ jobs:
 
               private lateinit var title: TextView
               private lateinit var countdown: TextView
+              private lateinit var appsText: TextView
+              private lateinit var selectBtn: Button
               private lateinit var durationRow: LinearLayout
               private lateinit var durationLabel: TextView
               private lateinit var minusBtn: Button
@@ -244,6 +314,9 @@ jobs:
               private lateinit var hint: TextView
               private lateinit var permBtn: Button
               private lateinit var infoBtn: Button
+
+              private var summary: String = ""
+              private var selectCount: Int = 0
 
               private val tick = object : Runnable {
                   override fun run() {
@@ -259,6 +332,7 @@ jobs:
 
               override fun onResume() {
                   super.onResume()
+                  updateSummary()
                   handler.post(tick)
               }
 
@@ -293,6 +367,15 @@ jobs:
                       setTextColor(Color.WHITE)
                       typeface = Typeface.MONOSPACE
                       gravity = Gravity.CENTER
+                  }
+                  appsText = TextView(this).apply {
+                      textSize = 15f
+                      setTextColor(Color.parseColor("#7FB2FF"))
+                      gravity = Gravity.CENTER
+                  }
+                  selectBtn = Button(this).apply {
+                      isAllCaps = false
+                      setOnClickListener { showPicker() }
                   }
 
                   minusBtn = Button(this).apply {
@@ -354,13 +437,85 @@ jobs:
                           .apply { topMargin = dp(top) }
 
                   root.addView(title, lp(0))
-                  root.addView(countdown, lp(16))
-                  root.addView(durationRow, lp(16))
+                  root.addView(countdown, lp(8))
+                  root.addView(appsText, lp(8))
+                  root.addView(selectBtn, lp(12))
+                  root.addView(durationRow, lp(12))
                   root.addView(lockBtn, lp(16, dp(100)))
                   root.addView(hint, lp(20))
                   root.addView(permBtn, lp(24))
                   root.addView(infoBtn, lp(8))
-                  setContentView(root)
+
+                  val scroll = ScrollView(this).apply {
+                      isFillViewport = true
+                      setBackgroundColor(Color.parseColor("#12161C"))
+                      addView(
+                          root,
+                          ScrollView.LayoutParams(
+                              ScrollView.LayoutParams.MATCH_PARENT,
+                              ScrollView.LayoutParams.WRAP_CONTENT
+                          )
+                      )
+                  }
+                  setContentView(scroll)
+              }
+
+              private fun appLabel(pkg: String): String = try {
+                  packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+              } catch (_: Exception) {
+                  pkg
+              }
+
+              /** Tính lại chuỗi tóm tắt app đã chọn (không làm mỗi 500ms cho nhẹ). */
+              private fun updateSummary() {
+                  val names = LockStore.lockedPackages(this).map { appLabel(it) }.sorted()
+                  selectCount = names.size
+                  summary = when {
+                      names.isEmpty() -> "chưa chọn app nào"
+                      names.size <= 3 -> names.joinToString(", ")
+                      else -> names.take(3).joinToString(", ") + " và ${names.size - 3} app khác"
+                  }
+              }
+
+              private fun showPicker() {
+                  if (LockStore.remainingMs(this) > 0L) return
+                  val pm = packageManager
+                  val protectedPkgs = LockStore.protectedPackages(this)
+                  val current = LockStore.lockedPackages(this)
+
+                  val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                  val apps = pm.queryIntentActivities(launcherIntent, 0)
+                      .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+                      .distinctBy { it.first }
+                      .filter { it.first !in protectedPkgs }
+                      .sortedWith(
+                          compareByDescending<Pair<String, String>> { it.first in current }
+                              .thenBy { it.second.lowercase() }
+                      )
+
+                  if (apps.isEmpty()) {
+                      Toast.makeText(this, "Không tìm thấy app nào để chọn", Toast.LENGTH_LONG).show()
+                      return
+                  }
+
+                  val labels = apps.map { it.second }.toTypedArray<CharSequence>()
+                  val checked = BooleanArray(apps.size) { apps[it].first in current }
+                  val chosen = current.toMutableSet()
+                  val inList = apps.map { it.first }.toSet()
+
+                  AlertDialog.Builder(this)
+                      .setTitle("Chọn app cần khóa")
+                      .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                          val p = apps[which].first
+                          if (isChecked) chosen.add(p) else chosen.remove(p)
+                      }
+                      .setPositiveButton("Lưu") { _, _ ->
+                          LockStore.setLockedPackages(this, chosen.filter { it in inList }.toSet())
+                          updateSummary()
+                          refresh()
+                      }
+                      .setNegativeButton("Hủy", null)
+                      .show()
               }
 
               private fun changeDuration(delta: Int) {
@@ -371,18 +526,23 @@ jobs:
 
               private fun onLockClicked() {
                   if (!isServiceEnabled()) {
-                      Toast.makeText(this, "Hãy bật quyền Trợ năng cho Khóa MT5 trước", Toast.LENGTH_LONG).show()
+                      Toast.makeText(this, "Hãy bật quyền Trợ năng cho Khóa App trước", Toast.LENGTH_LONG).show()
                       startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                      return
+                  }
+                  if (selectCount == 0) {
+                      Toast.makeText(this, "Hãy chọn ít nhất 1 app cần khóa", Toast.LENGTH_LONG).show()
                       return
                   }
                   val minutes = LockStore.STEPS_MIN[LockStore.selectedIndex(this)]
                   if (minutes >= 60L) {
                       // Khóa dài thì hỏi lại một lần cho khỏi bấm nhầm.
                       AlertDialog.Builder(this)
-                          .setTitle("Khóa MT5 ${LockStore.label(minutes)}?")
+                          .setTitle("Khóa ${LockStore.label(minutes)}?")
                           .setMessage(
-                              "Bắt đầu rồi thì không dừng được cho tới khi hết giờ. " +
-                                  "Lệnh đang mở vẫn chạy, hãy chắc chắn đã đặt SL."
+                              "App bị khóa: $summary.\n\n" +
+                                  "Bắt đầu rồi thì không dừng được cho tới khi hết giờ. " +
+                                  "Lệnh MT5 đang mở vẫn chạy, hãy chắc chắn đã đặt SL."
                           )
                           .setPositiveButton("Khóa") { _, _ -> doLock(minutes) }
                           .setNegativeButton("Hủy", null)
@@ -414,9 +574,12 @@ jobs:
                   permBtn.visibility = showSetup
                   infoBtn.visibility = showSetup
 
+                  appsText.text = "App bị khóa: $summary"
+
                   if (remaining > 0L) {
-                      title.text = "ĐANG KHÓA MT5"
+                      title.text = "ĐANG KHÓA"
                       countdown.text = formatMs(remaining)
+                      selectBtn.visibility = View.GONE
                       durationRow.visibility = View.GONE
                       lockBtn.isEnabled = false
                       lockBtn.text = "Đang khóa..."
@@ -425,19 +588,21 @@ jobs:
                   } else {
                       val idx = LockStore.selectedIndex(this)
                       val minutes = LockStore.STEPS_MIN[idx]
-                      title.text = "Khóa MT5"
+                      title.text = "Khóa App"
                       countdown.text = formatMs(minutes * 60_000L)
+                      selectBtn.visibility = View.VISIBLE
+                      selectBtn.text = "Chọn app cần khóa ($selectCount)"
                       durationRow.visibility = View.VISIBLE
                       durationLabel.text = LockStore.label(minutes)
                       minusBtn.isEnabled = idx > 0
                       plusBtn.isEnabled = idx < LockStore.STEPS_MIN.size - 1
                       lockBtn.isEnabled = true
-                      lockBtn.text = "KHÓA MT5 ${LockStore.label(minutes).uppercase()}"
+                      lockBtn.text = "KHÓA ${LockStore.label(minutes).uppercase()}"
                       lockBtn.background = roundedBg(Color.parseColor("#D93636"))
                       hint.text = if (enabled) {
-                          "Chọn thời gian bằng − / +, rồi bấm khóa. Lệnh đang mở vẫn chạy, nhớ đặt SL."
+                          "Chọn app và thời gian, rồi bấm khóa. Lệnh MT5 đang mở vẫn chạy, nhớ đặt SL."
                       } else {
-                          "Cần bật quyền Trợ năng cho Khóa MT5 thì mới chặn được MT5. " +
+                          "Cần bật quyền Trợ năng cho Khóa App thì mới chặn được. " +
                               "Nếu công tắc bị mờ: Thông tin ứng dụng → dấu ⋮ → Cho phép cài đặt bị hạn chế."
                       }
                   }

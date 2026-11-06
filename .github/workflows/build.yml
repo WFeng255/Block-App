@@ -75,7 +75,7 @@ jobs:
                   android:allowBackup="false"
                   android:icon="@mipmap/ic_launcher"
                   android:roundIcon="@mipmap/ic_launcher_round"
-                  android:label="Khóa App"
+                  android:label="Block"
                   android:theme="@android:style/Theme.Material.NoActionBar">
 
                   <activity
@@ -91,7 +91,7 @@ jobs:
                   <service
                       android:name=".LockService"
                       android:exported="false"
-                      android:label="Khóa App"
+                      android:label="Block"
                       android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
                       <intent-filter>
                           <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -109,7 +109,7 @@ jobs:
           cat > app/src/main/res/xml/accessibility_service_config.xml <<'KHOAEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-              android:accessibilityEventTypes="typeWindowStateChanged"
+              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
               android:accessibilityFeedbackType="feedbackGeneric"
               android:accessibilityFlags="flagDefault"
               android:canRetrieveWindowContent="false"
@@ -180,9 +180,20 @@ jobs:
           object LockStore {
               const val MT5_PACKAGE = "net.metaquotes.metatrader5"
 
-              /** Các mức thời gian khóa (phút): 5 phút ... 24 giờ. */
-              val STEPS_MIN = longArrayOf(5, 15, 30, 60, 120, 240, 480, 720, 1440)
-              private const val DEFAULT_INDEX = 1 // 15 phút
+              /** Các mức thời gian khóa (phút): +5 phút mỗi lần bấm (dưới 1 giờ), rồi +15, +30, +60 phút, tới 24 giờ. */
+              val STEPS_MIN: LongArray = buildList {
+                  var m = 5L
+                  while (m <= 1440L) {
+                      add(m)
+                      m += when {
+                          m < 60L -> 5L
+                          m < 240L -> 15L
+                          m < 480L -> 30L
+                          else -> 60L
+                      }
+                  }
+              }.toLongArray()
+              private val DEFAULT_INDEX = STEPS_MIN.indexOf(15L) // 15 phút
 
               private const val PREFS = "lock"
               private const val KEY_STARTED = "started"
@@ -289,18 +300,45 @@ jobs:
           class LockService : AccessibilityService() {
 
               private var lastLaunch = 0L
+              private var lastHome = 0L
+          
+              companion object {
+                  @Volatile
+                  var instance: LockService? = null
+              }
+          
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+                  instance = this
+              }
+          
+              override fun onUnbind(intent: Intent?): Boolean {
+                  instance = null
+                  return super.onUnbind(intent)
+              }
+          
+              override fun onDestroy() {
+                  instance = null
+                  super.onDestroy()
+              }
               private val protectedPkgs by lazy { LockStore.protectedPackages(this) }
 
               override fun onAccessibilityEvent(event: AccessibilityEvent?) {
                   if (event == null) return
-                  if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+                  if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                      event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                  ) return
                   val pkg = event.packageName?.toString() ?: return
                   if (pkg !in LockStore.lockedPackages(this)) return
                   if (pkg in protectedPkgs) return
                   if (LockStore.remainingMs(this) <= 0L) return
 
                   // Bước chắc chắn: đẩy app ra màn hình chính.
-                  performGlobalAction(GLOBAL_ACTION_HOME)
+                  val t = SystemClock.elapsedRealtime()
+                  if (t - lastHome > 400L) {
+                      lastHome = t
+                      performGlobalAction(GLOBAL_ACTION_HOME)
+                  }
 
                   // Thêm: mở màn hình đếm ngược của app (có thể bị hệ thống chặn, không sao).
                   val now = SystemClock.elapsedRealtime()
@@ -571,7 +609,7 @@ jobs:
 
               private fun onLockClicked() {
                   if (!isServiceEnabled()) {
-                      Toast.makeText(this, "Hãy bật quyền Trợ năng cho Khóa App trước", Toast.LENGTH_LONG).show()
+                      Toast.makeText(this, "Hãy bật quyền Trợ năng cho Block trước", Toast.LENGTH_LONG).show()
                       startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                       return
                   }
@@ -633,7 +671,7 @@ jobs:
                   } else {
                       val idx = LockStore.selectedIndex(this)
                       val minutes = LockStore.STEPS_MIN[idx]
-                      title.text = "Khóa App"
+                      title.text = "Block"
                       countdown.text = formatMs(minutes * 60_000L)
                       selectBtn.visibility = View.VISIBLE
                       selectBtn.text = "Chọn app cần khóa ($selectCount)"
@@ -644,10 +682,12 @@ jobs:
                       lockBtn.isEnabled = true
                       lockBtn.text = "KHÓA ${LockStore.label(minutes).uppercase()}"
                       lockBtn.background = roundedBg(Color.parseColor("#D93636"))
-                      hint.text = if (enabled) {
+                      hint.text = if (enabled && LockService.instance == null) {
+                      "Dịch vụ Trợ năng chưa chạy. Vào Cài đặt → Trợ năng, tắt rồi bật lại công tắc Block."
+                  } else if (enabled) {
                           "Chọn app và thời gian, rồi bấm khóa. Lệnh MT5 đang mở vẫn chạy, nhớ đặt SL."
                       } else {
-                          "Cần bật quyền Trợ năng cho Khóa App thì mới chặn được. " +
+                          "Cần bật quyền Trợ năng cho Block thì mới chặn được. " +
                               "Nếu công tắc bị mờ: Thông tin ứng dụng → dấu ⋮ → Cho phép cài đặt bị hạn chế."
                       }
                   }

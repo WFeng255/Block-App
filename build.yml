@@ -374,7 +374,6 @@ jobs:
           import android.provider.Settings
           import android.view.Gravity
           import android.view.View
-          import android.widget.Button
           import android.widget.FrameLayout
           import android.widget.LinearLayout
           import android.widget.ScrollView
@@ -385,18 +384,30 @@ jobs:
 
               private val handler = Handler(Looper.getMainLooper())
 
-              private lateinit var title: TextView
+              private val cBg = Color.parseColor("#0F1318")
+              private val cCard = Color.parseColor("#1A2029")
+              private val cChip = Color.parseColor("#2A3340")
+              private val cGray = Color.parseColor("#8B96A5")
+              private val cRed = Color.parseColor("#E5484D")
+              private val cGreen = Color.parseColor("#30A46C")
+              private val cBlue = Color.parseColor("#7FB2FF")
+              private val cAmber = Color.parseColor("#F5A524")
+              private val cWarnBg = Color.parseColor("#2B2214")
+
+              private lateinit var statusPill: TextView
+              private lateinit var caption: TextView
               private lateinit var countdown: TextView
-              private lateinit var appsText: TextView
-              private lateinit var selectBtn: Button
               private lateinit var durationRow: LinearLayout
               private lateinit var durationLabel: TextView
-              private lateinit var minusBtn: Button
-              private lateinit var plusBtn: Button
-              private lateinit var lockBtn: Button
+              private lateinit var minusBtn: TextView
+              private lateinit var plusBtn: TextView
+              private lateinit var appsText: TextView
+              private lateinit var selectBtn: TextView
+              private lateinit var lockBtn: TextView
               private lateinit var hint: TextView
-              private lateinit var permBtn: Button
-              private lateinit var infoBtn: Button
+              private lateinit var setupCard: LinearLayout
+              private lateinit var permBtn: TextView
+              private lateinit var infoBtn: TextView
 
               private var summary: String = ""
               private var selectCount: Int = 0
@@ -410,6 +421,8 @@ jobs:
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+                  window.statusBarColor = cBg
+                  window.navigationBarColor = cBg
                   buildUi()
               }
 
@@ -426,87 +439,139 @@ jobs:
 
               private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-              private fun roundedBg(color: Int): GradientDrawable = GradientDrawable().apply {
-                  setColor(color)
-                  cornerRadius = dp(24).toFloat()
+              private fun bg(color: Int, radiusDp: Int = 0, oval: Boolean = false): GradientDrawable {
+                  val d = GradientDrawable()
+                  if (oval) d.shape = GradientDrawable.OVAL else d.cornerRadius = dp(radiusDp).toFloat()
+                  d.setColor(color)
+                  return d
               }
+
+              private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
+                  TextView(this).apply {
+                      this.text = text
+                      textSize = size
+                      setTextColor(color)
+                      if (bold) setTypeface(typeface, Typeface.BOLD)
+                  }
+
+              private fun pillButton(text: String, fill: Int, textColor: Int, heightDp: Int): TextView =
+                  tv(text, 16f, textColor, true).apply {
+                      gravity = Gravity.CENTER
+                      background = bg(fill, heightDp / 2)
+                      isClickable = true
+                      minimumHeight = dp(heightDp)
+                      setPadding(dp(20), 0, dp(20), 0)
+                  }
+
+              private fun roundButton(text: String): TextView =
+                  tv(text, 26f, Color.WHITE, true).apply {
+                      gravity = Gravity.CENTER
+                      background = bg(cChip, 0, true)
+                      isClickable = true
+                  }
+
+              private fun card(fill: Int): LinearLayout = LinearLayout(this).apply {
+                  orientation = LinearLayout.VERTICAL
+                  background = bg(fill, 24)
+                  setPadding(dp(20), dp(20), dp(20), dp(20))
+              }
+
+              private fun lp(top: Int, h: Int = LinearLayout.LayoutParams.WRAP_CONTENT) =
+                  LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h)
+                      .apply { topMargin = dp(top) }
 
               private fun buildUi() {
                   val root = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
-                      gravity = Gravity.CENTER
-                      setPadding(dp(24), dp(24), dp(24), dp(24))
-                      setBackgroundColor(Color.parseColor("#12161C"))
+                      setPadding(dp(20), dp(28), dp(20), dp(28))
+                      setBackgroundColor(cBg)
                   }
 
-                  title = TextView(this).apply {
-                      textSize = 26f
-                      setTextColor(Color.WHITE)
-                      setTypeface(typeface, Typeface.BOLD)
+                  // Đầu trang: tên app + nhãn trạng thái
+                  statusPill = tv("", 12f, Color.WHITE, true).apply {
                       gravity = Gravity.CENTER
+                      setPadding(dp(12), dp(6), dp(12), dp(6))
                   }
-                  countdown = TextView(this).apply {
-                      textSize = 52f
-                      setTextColor(Color.WHITE)
-                      typeface = Typeface.MONOSPACE
-                      gravity = Gravity.CENTER
+                  val header = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER_VERTICAL
+                      addView(
+                          tv("Block", 30f, Color.WHITE, true),
+                          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                      )
+                      addView(
+                          statusPill,
+                          LinearLayout.LayoutParams(
+                              LinearLayout.LayoutParams.WRAP_CONTENT,
+                              LinearLayout.LayoutParams.WRAP_CONTENT
+                          )
+                      )
                   }
-                  appsText = TextView(this).apply {
-                      textSize = 15f
-                      setTextColor(Color.parseColor("#7FB2FF"))
-                      gravity = Gravity.CENTER
-                  }
-                  selectBtn = Button(this).apply {
-                      isAllCaps = false
-                      setOnClickListener { showPicker() }
-                  }
+                  root.addView(header, lp(0))
 
-                  minusBtn = Button(this).apply {
-                      text = "−"
-                      textSize = 24f
-                      setOnClickListener { changeDuration(-1) }
+                  // Thẻ đồng hồ
+                  caption = tv("", 12f, cGray, true).apply {
+                      gravity = Gravity.CENTER
+                      letterSpacing = 0.1f
                   }
-                  plusBtn = Button(this).apply {
-                      text = "+"
-                      textSize = 24f
-                      setOnClickListener { changeDuration(+1) }
-                  }
-                  durationLabel = TextView(this).apply {
-                      textSize = 22f
-                      setTextColor(Color.WHITE)
-                      setTypeface(typeface, Typeface.BOLD)
+                  countdown = tv("", 56f, Color.WHITE).apply {
+                      typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+                      fontFeatureSettings = "tnum"
                       gravity = Gravity.CENTER
                   }
+                  minusBtn = roundButton("−").apply { setOnClickListener { changeDuration(-1) } }
+                  plusBtn = roundButton("+").apply { setOnClickListener { changeDuration(+1) } }
+                  durationLabel = tv("", 18f, Color.WHITE, true).apply { gravity = Gravity.CENTER }
                   durationRow = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER_VERTICAL
-                      addView(minusBtn, LinearLayout.LayoutParams(dp(72), dp(56)))
-                      addView(durationLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                      addView(plusBtn, LinearLayout.LayoutParams(dp(72), dp(56)))
+                      addView(minusBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+                      addView(
+                          durationLabel,
+                          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                      )
+                      addView(plusBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
                   }
+                  val timerCard = card(cCard)
+                  timerCard.addView(caption, lp(0))
+                  timerCard.addView(countdown, lp(4))
+                  timerCard.addView(durationRow, lp(16))
+                  root.addView(timerCard, lp(24))
 
-                  lockBtn = Button(this).apply {
-                      textSize = 20f
-                      setTextColor(Color.WHITE)
-                      setTypeface(typeface, Typeface.BOLD)
-                      isAllCaps = false
+                  // Thẻ app bị khóa
+                  appsText = tv("", 17f, Color.WHITE, true)
+                  selectBtn = pillButton("", cChip, cBlue, 48).apply {
+                      textSize = 15f
+                      setOnClickListener { showPicker() }
+                  }
+                  val appsCard = card(cCard)
+                  appsCard.addView(
+                      tv("APP BỊ KHÓA", 12f, cGray, true).apply { letterSpacing = 0.1f },
+                      lp(0)
+                  )
+                  appsCard.addView(appsText, lp(8))
+                  appsCard.addView(selectBtn, lp(14, dp(48)))
+                  root.addView(appsCard, lp(14))
+
+                  // Nút khóa
+                  lockBtn = pillButton("", cRed, Color.WHITE, 64).apply {
+                      textSize = 18f
                       setOnClickListener { onLockClicked() }
                   }
-                  hint = TextView(this).apply {
-                      textSize = 14f
-                      setTextColor(Color.parseColor("#9AA4B2"))
-                      gravity = Gravity.CENTER
-                  }
-                  permBtn = Button(this).apply {
-                      text = "Bật quyền Trợ năng"
-                      isAllCaps = false
+                  root.addView(lockBtn, lp(20, dp(64)))
+
+                  hint = tv("", 13f, cGray).apply { gravity = Gravity.CENTER }
+                  root.addView(hint, lp(14))
+
+                  // Thẻ hướng dẫn bật quyền (chỉ hiện khi chưa bật)
+                  permBtn = pillButton("Bật quyền Trợ năng", cAmber, Color.parseColor("#1A1306"), 48).apply {
+                      textSize = 15f
                       setOnClickListener {
                           startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                       }
                   }
-                  infoBtn = Button(this).apply {
-                      text = "Mở thông tin ứng dụng (nếu công tắc bị mờ)"
-                      isAllCaps = false
+                  infoBtn = pillButton("Công tắc bị mờ? Mở thông tin ứng dụng", cChip, Color.WHITE, 44).apply {
+                      textSize = 13f
                       setOnClickListener {
                           startActivity(
                               Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
@@ -514,24 +579,23 @@ jobs:
                           )
                       }
                   }
-
-                  fun lp(top: Int, height: Int = LinearLayout.LayoutParams.WRAP_CONTENT) =
-                      LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
-                          .apply { topMargin = dp(top) }
-
-                  root.addView(title, lp(0))
-                  root.addView(countdown, lp(8))
-                  root.addView(appsText, lp(8))
-                  root.addView(selectBtn, lp(12))
-                  root.addView(durationRow, lp(12))
-                  root.addView(lockBtn, lp(16, dp(100)))
-                  root.addView(hint, lp(20))
-                  root.addView(permBtn, lp(24))
-                  root.addView(infoBtn, lp(8))
+                  setupCard = card(cWarnBg)
+                  setupCard.addView(tv("Cần bật quyền Trợ năng", 16f, cAmber, true), lp(0))
+                  setupCard.addView(
+                      tv(
+                          "Block cần quyền này để biết khi bạn mở app bị khóa. Không đọc nội dung màn hình, không thu thập dữ liệu. " +
+                              "Nếu công tắc bị mờ: Thông tin ứng dụng → bật \"Cho phép cài đặt giới hạn\" (hoặc dấu ⋮ → Cho phép cài đặt bị hạn chế).",
+                          13f, cGray
+                      ),
+                      lp(6)
+                  )
+                  setupCard.addView(permBtn, lp(14, dp(48)))
+                  setupCard.addView(infoBtn, lp(8, dp(44)))
+                  root.addView(setupCard, lp(14))
 
                   val scroll = ScrollView(this).apply {
                       isFillViewport = true
-                      setBackgroundColor(Color.parseColor("#12161C"))
+                      setBackgroundColor(cBg)
                       addView(
                           root,
                           FrameLayout.LayoutParams(
@@ -554,7 +618,7 @@ jobs:
                   val names = LockStore.lockedPackages(this).map { appLabel(it) }.sorted()
                   selectCount = names.size
                   summary = when {
-                      names.isEmpty() -> "chưa chọn app nào"
+                      names.isEmpty() -> "Chưa chọn app nào"
                       names.size <= 3 -> names.joinToString(", ")
                       else -> names.take(3).joinToString(", ") + " và ${names.size - 3} app khác"
                   }
@@ -649,46 +713,55 @@ jobs:
                   else String.format("%02d:%02d", m, sec)
               }
 
+              private fun setPill(text: String, fill: Int, textColor: Int) {
+                  statusPill.text = text
+                  statusPill.setTextColor(textColor)
+                  statusPill.background = bg(fill, 16)
+              }
+
               private fun refresh() {
                   val remaining = LockStore.remainingMs(this)
                   val enabled = isServiceEnabled()
 
-                  val showSetup = if (enabled) View.GONE else View.VISIBLE
-                  permBtn.visibility = showSetup
-                  infoBtn.visibility = showSetup
-
-                  appsText.text = "App bị khóa: $summary"
+                  setupCard.visibility = if (enabled) View.GONE else View.VISIBLE
+                  appsText.text = summary
 
                   if (remaining > 0L) {
-                      title.text = "ĐANG KHÓA"
+                      setPill("ĐANG KHÓA", cRed, Color.WHITE)
+                      caption.text = "CÒN LẠI"
                       countdown.text = formatMs(remaining)
                       selectBtn.visibility = View.GONE
                       durationRow.visibility = View.GONE
                       lockBtn.isEnabled = false
-                      lockBtn.text = "Đang khóa..."
-                      lockBtn.background = roundedBg(Color.parseColor("#3A4250"))
+                      lockBtn.text = "Đang khóa…"
+                      lockBtn.setTextColor(cGray)
+                      lockBtn.background = bg(cChip, 32)
                       hint.text = "Hết giờ sẽ tự mở khóa. Không có nút dừng."
                   } else {
                       val idx = LockStore.selectedIndex(this)
                       val minutes = LockStore.STEPS_MIN[idx]
-                      title.text = "Block"
+                      if (enabled) setPill("SẴN SÀNG", cGreen, Color.WHITE)
+                      else setPill("CHƯA BẬT TRỢ NĂNG", cChip, cAmber)
+                      caption.text = "THỜI GIAN KHÓA"
                       countdown.text = formatMs(minutes * 60_000L)
                       selectBtn.visibility = View.VISIBLE
                       selectBtn.text = "Chọn app cần khóa ($selectCount)"
                       durationRow.visibility = View.VISIBLE
                       durationLabel.text = LockStore.label(minutes)
                       minusBtn.isEnabled = idx > 0
+                      minusBtn.alpha = if (idx > 0) 1f else 0.35f
                       plusBtn.isEnabled = idx < LockStore.STEPS_MIN.size - 1
+                      plusBtn.alpha = if (idx < LockStore.STEPS_MIN.size - 1) 1f else 0.35f
                       lockBtn.isEnabled = true
                       lockBtn.text = "KHÓA ${LockStore.label(minutes).uppercase()}"
-                      lockBtn.background = roundedBg(Color.parseColor("#D93636"))
+                      lockBtn.setTextColor(Color.WHITE)
+                      lockBtn.background = bg(cRed, 32)
                       hint.text = if (enabled && LockService.instance == null) {
-                      "Dịch vụ Trợ năng chưa chạy. Vào Cài đặt → Trợ năng, tắt rồi bật lại công tắc Block."
-                  } else if (enabled) {
+                          "Dịch vụ Trợ năng chưa chạy. Vào Cài đặt → Trợ năng, tắt rồi bật lại công tắc Block."
+                      } else if (enabled) {
                           "Chọn app và thời gian, rồi bấm khóa. Lệnh MT5 đang mở vẫn chạy, nhớ đặt SL."
                       } else {
-                          "Cần bật quyền Trợ năng cho Block thì mới chặn được. " +
-                              "Nếu công tắc bị mờ: Thông tin ứng dụng → dấu ⋮ → Cho phép cài đặt bị hạn chế."
+                          "Bật quyền Trợ năng ở thẻ bên dưới thì Block mới chặn được."
                       }
                   }
               }

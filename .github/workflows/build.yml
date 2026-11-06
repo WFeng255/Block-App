@@ -305,6 +305,16 @@ jobs:
               companion object {
                   @Volatile
                   var instance: LockService? = null
+          
+                  // Thông tin chẩn đoán, hiện ở cuối màn hình chính.
+                  @Volatile
+                  var events = 0
+          
+                  @Volatile
+                  var lastPkg = "(chưa có)"
+          
+                  @Volatile
+                  var lastNote = ""
               }
           
               override fun onServiceConnected() {
@@ -329,9 +339,24 @@ jobs:
                       event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                   ) return
                   val pkg = event.packageName?.toString() ?: return
-                  if (pkg !in LockStore.lockedPackages(this)) return
-                  if (pkg in protectedPkgs) return
-                  if (LockStore.remainingMs(this) <= 0L) return
+                  val isState = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                  if (isState) {
+                      events++
+                      lastPkg = pkg
+                  }
+                  if (pkg !in LockStore.lockedPackages(this)) {
+                      if (isState) lastNote = "không nằm trong danh sách khóa"
+                      return
+                  }
+                  if (pkg in protectedPkgs) {
+                      if (isState) lastNote = "app được miễn khóa"
+                      return
+                  }
+                  if (LockStore.remainingMs(this) <= 0L) {
+                      if (isState) lastNote = "đang không khóa"
+                      return
+                  }
+                  lastNote = "ĐÃ CHẶN"
 
                   // Bước chắc chắn: đẩy app ra màn hình chính.
                   val t = SystemClock.elapsedRealtime()
@@ -408,6 +433,7 @@ jobs:
               private lateinit var setupCard: LinearLayout
               private lateinit var permBtn: TextView
               private lateinit var infoBtn: TextView
+              private lateinit var debug: TextView
 
               private var summary: String = ""
               private var selectCount: Int = 0
@@ -592,6 +618,9 @@ jobs:
                   setupCard.addView(permBtn, lp(14, dp(48)))
                   setupCard.addView(infoBtn, lp(8, dp(44)))
                   root.addView(setupCard, lp(14))
+          
+                  debug = tv("", 11f, cGray).apply { gravity = Gravity.CENTER }
+                  root.addView(debug, lp(20))
 
                   val scroll = ScrollView(this).apply {
                       isFillViewport = true
@@ -724,6 +753,9 @@ jobs:
                   val enabled = isServiceEnabled()
 
                   setupCard.visibility = if (enabled) View.GONE else View.VISIBLE
+                  val running = if (LockService.instance != null) "đang chạy" else "KHÔNG chạy"
+                  debug.text = "Chẩn đoán: dịch vụ $running, nhận ${LockService.events} sự kiện\n" +
+                      "App mở gần nhất: ${LockService.lastPkg} → ${LockService.lastNote}"
                   appsText.text = summary
 
                   if (remaining > 0L) {

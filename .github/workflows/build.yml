@@ -245,6 +245,8 @@ jobs:
               private const val KEY_REMINDER = "reminder"
               private const val KEY_LOG = "log"
               private const val KEY_DAYS = "days"
+              private const val KEY_THEME = "theme_mode"
+              private const val KEY_COLOR = "color_mode"
 
               // Thông tin chẩn đoán: mỗi lớp chặn vừa "thấy" app nào mở.
               @Volatile var accSeen: String = ""
@@ -338,6 +340,22 @@ jobs:
                   addAll(Intent(Intent.ACTION_DIAL))
                   addAll(Intent(Settings.ACTION_SETTINGS))
                   return result
+              }
+
+              // ---------- Giao diện ----------
+
+              /** 0 = tự động theo hệ thống, 1 = sáng (mặc định), 2 = tối. */
+              fun themeMode(c: Context): Int = prefs(c).getInt(KEY_THEME, 1)
+
+              fun setThemeMode(c: Context, mode: Int) {
+                  prefs(c).edit().putInt(KEY_THEME, mode).apply()
+              }
+
+              /** 0 = đổi màu theo trạng thái, 1 = chuyển màu từ từ. */
+              fun colorMode(c: Context): Int = prefs(c).getInt(KEY_COLOR, 0)
+
+              fun setColorMode(c: Context, mode: Int) {
+                  prefs(c).edit().putInt(KEY_COLOR, mode).apply()
               }
 
               // ---------- Lời nhắc ----------
@@ -855,6 +873,7 @@ jobs:
           import android.app.Activity
           import android.app.AlertDialog
           import android.content.Context
+          import android.content.res.Configuration
           import android.graphics.Color
           import android.graphics.Typeface
           import android.graphics.drawable.GradientDrawable
@@ -868,33 +887,77 @@ jobs:
           import android.widget.ScrollView
           import android.widget.TextView
 
-          /** Bảng màu và các hàm dựng giao diện sáng, sạch dùng chung cho mọi màn hình. */
+          /** Bảng màu (sáng/tối) và các hàm dựng giao diện dùng chung cho mọi màn hình. */
           object Ui {
               const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
               const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
 
-              val BG = Color.parseColor("#F6F7F9")
-              val CARD = Color.parseColor("#FFFFFF")
-              val BORDER = Color.parseColor("#E6E8EC")
-              val TEXT = Color.parseColor("#12161C")
-              val MUTED = Color.parseColor("#6B7280")
+              /** Đang dùng nền tối hay không. Cập nhật bằng refreshMode(). */
+              @Volatile var dark: Boolean = false
+                  private set
+
+              /** Màu nền đổi từ từ (cầu vồng nhẹ) thay vì đổi theo trạng thái. */
+              @Volatile var cycle: Boolean = false
+                  private set
+
+              /** Đọc lại cài đặt giao diện: 0 = tự động theo hệ thống, 1 = sáng, 2 = tối. */
+              fun refreshMode(c: Context) {
+                  val mode = LockStore.themeMode(c)
+                  dark = when (mode) {
+                      1 -> false
+                      2 -> true
+                      else -> (c.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                          Configuration.UI_MODE_NIGHT_YES
+                  }
+                  cycle = LockStore.colorMode(c) == 1
+              }
+
+              private fun pick(l: Int, d: Int): Int = if (dark) d else l
+
+              private val L_CARD = Color.parseColor("#FFFFFF")
+              private val D_CARD = Color.parseColor("#1B222C")
+              private val L_BORDER = Color.parseColor("#E6E8EC")
+              private val D_BORDER = Color.parseColor("#2A313C")
+              private val L_TEXT = Color.parseColor("#12161C")
+              private val D_TEXT = Color.parseColor("#F0F3F6")
+              private val L_MUTED = Color.parseColor("#6B7280")
+              private val D_MUTED = Color.parseColor("#9AA4B2")
+              private val L_LINK = Color.parseColor("#2563EB")
+              private val D_LINK = Color.parseColor("#7DB1FF")
+              private val L_OK = Color.parseColor("#16A34A")
+              private val D_OK = Color.parseColor("#34D399")
+              private val L_WARN = Color.parseColor("#D97706")
+              private val D_WARN = Color.parseColor("#FBBF24")
+              private val L_BASE = Color.parseColor("#FAFBFC")
+              private val D_BASE = Color.parseColor("#0D1117")
+              private val L_BANNER = Color.parseColor("#FFF7E6")
+              private val D_BANNER = Color.parseColor("#3A2E12")
+              private val L_BANNER_B = Color.parseColor("#F5D9A8")
+              private val D_BANNER_B = Color.parseColor("#6B5420")
+
+              val CARD: Int get() = pick(L_CARD, D_CARD)
+              val BORDER: Int get() = pick(L_BORDER, D_BORDER)
+              val TEXT: Int get() = pick(L_TEXT, D_TEXT)
+              val MUTED: Int get() = pick(L_MUTED, D_MUTED)
+              val LINK: Int get() = pick(L_LINK, D_LINK)
+              val OK: Int get() = pick(L_OK, D_OK)
+              val WARN: Int get() = pick(L_WARN, D_WARN)
+              val TRACK: Int get() = pick(L_BORDER, D_BORDER)
+              val PAGE_END: Int get() = pick(L_BASE, D_BASE)
+              val BANNER_BG: Int get() = pick(L_BANNER, D_BANNER)
+              val BANNER_BORDER: Int get() = pick(L_BANNER_B, D_BANNER_B)
+              val CARD_FILL: Int get() = if (dark) Color.argb(225, 22, 27, 36) else Color.argb(238, 255, 255, 255)
+              val GLASS: Int get() = if (dark) Color.argb(215, 18, 22, 30) else Color.argb(235, 255, 255, 255)
+
+              /** Chữ đặt trên nền màu đảo ngược (chip đang chọn). */
+              val ON_TEXT: Int get() = pick(Color.WHITE, L_TEXT)
+
               val ACCENT = Color.parseColor("#E5484D")
-              val OK = Color.parseColor("#16A34A")
-              val WARN = Color.parseColor("#D97706")
-              val LINK = Color.parseColor("#2563EB")
-              val TRACK = Color.parseColor("#E8EAEE")
               val TEAL = Color.parseColor("#14B8A6")
               val CORAL = Color.parseColor("#FF6B4A")
-              val MINT = Color.parseColor("#D4F4EA")
-              val PEACH = Color.parseColor("#FFDFD0")
-              val PAGE_END = Color.parseColor("#FAFBFC")
 
-              fun gradient(top: Int, bottom: Int): GradientDrawable =
-                  GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, bottom))
-
-              /** Nền gradient theo trạng thái: xanh bạc hà khi sẵn sàng, hồng cam khi đang khóa. */
+              /** Đổi giá trị đã chọn thành nền mới: aurora động nên chỉ cần chỉnh thanh hệ thống. */
               fun applyTheme(a: Activity, v: AuroraView, locked: Boolean) {
-                  val top = if (locked) PEACH else MINT
                   v.locked = locked
                   a.window.navigationBarColor = PAGE_END
               }
@@ -915,16 +978,25 @@ jobs:
                   return g
               }
 
-              /** Nền sáng, biểu tượng thanh trạng thái màu tối. */
+              /** Thanh hệ thống trong suốt, biểu tượng đậm khi nền sáng, sáng khi nền tối. */
               fun setupWindow(a: Activity) {
+                  refreshMode(a)
                   val w = a.window
                   w.statusBarColor = Color.TRANSPARENT
                   w.navigationBarColor = PAGE_END
-                  w.decorView.systemUiVisibility = w.decorView.systemUiVisibility or
+                  var f = w.decorView.systemUiVisibility or
                       View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                      View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                      View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                      View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                      View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                  val light = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                  f = if (dark) (f and light.inv()) else (f or light)
+                  w.decorView.systemUiVisibility = f
+              }
+
+              /** Hộp thoại có giao diện sáng hoặc tối theo chế độ hiện tại. */
+              fun dialog(a: Activity): AlertDialog.Builder {
+                  val theme = if (dark) android.R.style.Theme_Material_Dialog_Alert
+                  else android.R.style.Theme_Material_Light_Dialog_Alert
+                  return AlertDialog.Builder(a, theme)
               }
 
               fun text(c: Context, s: String, sizeSp: Float, color: Int, bold: Boolean = false): TextView {
@@ -945,7 +1017,7 @@ jobs:
               fun card(c: Context): LinearLayout {
                   val l = LinearLayout(c)
                   l.orientation = LinearLayout.VERTICAL
-                  l.background = rounded(c, Color.argb(238, 255, 255, 255), 20, BORDER, 1)
+                  l.background = rounded(c, CARD_FILL, 20, BORDER, 1)
                   l.setPadding(dp(c, 16), dp(c, 14), dp(c, 16), dp(c, 14))
                   return l
               }
@@ -972,6 +1044,28 @@ jobs:
                   t.setPadding(dp(c, 4), dp(c, 6), dp(c, 4), dp(c, 6))
                   t.setOnClickListener { onClick() }
                   return t
+              }
+
+              /** Hàng chip chọn một trong nhiều giá trị. */
+              fun segment(c: Context, labels: Array<String>, selected: Int, onPick: (Int) -> Unit): LinearLayout {
+                  val row = LinearLayout(c)
+                  row.orientation = LinearLayout.HORIZONTAL
+                  for (i in labels.indices) {
+                      val chip = TextView(c)
+                      chip.text = labels[i]
+                      chip.textSize = 13f
+                      chip.gravity = Gravity.CENTER
+                      chip.setTypeface(chip.typeface, Typeface.BOLD)
+                      chip.setPadding(dp(c, 4), dp(c, 10), dp(c, 4), dp(c, 10))
+                      val on = i == selected
+                      chip.background = if (on) rounded(c, TEXT, 12) else rounded(c, CARD, 12, BORDER, 1)
+                      chip.setTextColor(if (on) ON_TEXT else TEXT)
+                      chip.setOnClickListener { onPick(i) }
+                      val p = LinearLayout.LayoutParams(0, WRAP, 1f)
+                      if (i < labels.size - 1) p.rightMargin = dp(c, 8)
+                      row.addView(chip, p)
+                  }
+                  return row
               }
 
               fun dot(c: Context, col: Int): View {
@@ -1011,7 +1105,7 @@ jobs:
                   val box = FrameLayout(a)
                   box.setPadding(dp(a, 20), dp(a, 8), dp(a, 20), 0)
                   box.addView(et, FrameLayout.LayoutParams(MATCH, WRAP))
-                  val b = AlertDialog.Builder(a)
+                  val b = dialog(a)
                       .setTitle(title)
                       .setView(box)
                       .setPositiveButton("Lưu") { _, _ -> onOk(et.text.toString()) }
@@ -1029,7 +1123,7 @@ jobs:
                   return v
               }
 
-              /** Bọc nội dung vào màn hình cuộn được, nền sáng. */
+              /** Bọc nội dung vào màn hình cuộn được, đặt trên nền aurora. */
               fun screen(c: Context, content: LinearLayout): FrameLayout {
                   val res = c.resources.getIdentifier("status_bar_height", "dimen", "android")
                   val statusBar = if (res > 0) c.resources.getDimensionPixelSize(res) else dp(c, 24)
@@ -1060,7 +1154,6 @@ jobs:
           import android.hardware.SensorEventListener
           import android.hardware.SensorManager
           import android.os.SystemClock
-          import android.view.MotionEvent
           import android.view.View
           import kotlin.math.PI
           import kotlin.math.abs
@@ -1072,7 +1165,7 @@ jobs:
            * Đồng hồ nước: một vòng tròn kính, bên trong nước có sóng.
            * - progress = 1 là đầy nước, hạ dần về 0 theo thời gian còn lại.
            * - Nghiêng điện thoại thì mặt nước nghiêng theo và sóng lắc.
-           * - Chạm vào thì gợn sóng lan ra. splash() cho nước dâng lên rồi chốt lại.
+           * - splash() cho nước dâng lên rồi chốt lại (dùng khi bấm KHÓA).
            */
           class RingView(context: Context) : View(context) {
 
@@ -1109,7 +1202,6 @@ jobs:
               private val outline = Paint(Paint.ANTI_ALIAS_FLAG)
               private val waveBack = Paint(Paint.ANTI_ALIAS_FLAG)
               private val waveFront = Paint(Paint.ANTI_ALIAS_FLAG)
-              private val rippleP = Paint(Paint.ANTI_ALIAS_FLAG)
               private val big = Paint(Paint.ANTI_ALIAS_FLAG)
               private val small = Paint(Paint.ANTI_ALIAS_FLAG)
               private val clip = Path()
@@ -1121,7 +1213,6 @@ jobs:
               private var prevTilt = 0f
               private var impulse = 0f
               private var boost = 0f
-              private val ripples = ArrayList<FloatArray>()   // x, y, thời điểm bắt đầu
 
               private var sensorManager: SensorManager? = null
               private val sensorListener = object : SensorEventListener {
@@ -1142,7 +1233,6 @@ jobs:
                   outline.style = Paint.Style.STROKE
                   waveBack.style = Paint.Style.FILL
                   waveFront.style = Paint.Style.FILL
-                  rippleP.style = Paint.Style.STROKE
                   big.color = Ui.TEXT
                   big.textAlign = Paint.Align.CENTER
                   big.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
@@ -1178,16 +1268,6 @@ jobs:
                   }
                   sensorManager = null
                   super.onDetachedFromWindow()
-              }
-
-              override fun onTouchEvent(event: MotionEvent): Boolean {
-                  if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                      ripples.add(floatArrayOf(event.x, event.y, SystemClock.uptimeMillis().toFloat()))
-                      if (ripples.size > 6) ripples.removeAt(0)
-                      impulse = maxOf(impulse, 0.9f)
-                      invalidate()
-                  }
-                  return true
               }
 
               private fun withAlpha(c: Int, a: Int): Int =
@@ -1226,6 +1306,9 @@ jobs:
                   val slosh = (1f + vel * 0.6f + impulse * 2.5f).coerceAtMost(4f)
 
                   // Mặt kính
+                  glass.color = Ui.GLASS
+                  big.color = Ui.TEXT
+                  small.color = Ui.TEXT
                   canvas.drawCircle(cx, cy, r, glass)
 
                   // Mực nước
@@ -1254,21 +1337,6 @@ jobs:
                   canvas.drawPath(wave, waveFront)
                   canvas.restore()
 
-                  // Gợn sóng khi chạm
-                  rippleP.strokeWidth = stroke * 0.8f
-                  var i = ripples.size - 1
-                  while (i >= 0) {
-                      val rp = ripples[i]
-                      val age = t.toFloat() - rp[2]
-                      if (age > 1200f) {
-                          ripples.removeAt(i)
-                      } else {
-                          val p = age / 1200f
-                          rippleP.color = Color.argb((200f * (1f - p)).toInt(), 255, 255, 255)
-                          canvas.drawCircle(rp[0], rp[1], r * 0.12f + r * 0.8f * p, rippleP)
-                      }
-                      i--
-                  }
                   canvas.restore()
 
                   // Viền
@@ -1304,9 +1372,10 @@ jobs:
           import kotlin.math.sin
 
           /**
-           * Nền aurora: vài mảng màu mờ trôi chậm trên nền gần trắng.
-           * locked = false: xanh ngọc, tím, xanh trời. locked = true: cam, hồng, tím nhạt.
-           * Đổi trạng thái thì màu chuyển dần trong khoảng nửa giây.
+           * Nền aurora: vài mảng màu mờ trôi chậm trên nền gần trắng (hoặc gần đen khi nền tối).
+           * Hai cách đổi màu:
+           *  - Theo trạng thái: sẵn sàng là xanh ngọc, tím, xanh trời; đang khóa là cam, hồng, tím nhạt.
+           *  - Chuyển màu từ từ: sắc độ xoay chậm qua cả dải màu, khoảng 1 phút một vòng.
            */
           class AuroraView(context: Context) : View(context) {
 
@@ -1321,6 +1390,9 @@ jobs:
               private var mix = 0f
               private var shaderMix = -1f
               private var shaderRadius = 0f
+              private var shaderDark = false
+              private var shaderCycle = false
+              private var shaderKey = -1L
 
               private val calm = intArrayOf(
                   Color.parseColor("#1FD1B8"),
@@ -1335,17 +1407,14 @@ jobs:
                   Color.parseColor("#A78BFA")
               )
 
-              // Vị trí gốc (tỉ lệ theo chiều rộng/cao), biên độ và chu kỳ trôi của từng mảng.
+              // Vị trí gốc (tỉ lệ theo chiều rộng/cao) và chu kỳ trôi của từng mảng.
               private val bx = floatArrayOf(0.15f, 0.95f, 0.10f, 0.85f)
               private val by = floatArrayOf(0.08f, 0.28f, 0.68f, 0.92f)
               private val period = floatArrayOf(11000f, 14000f, 17000f, 13000f)
 
               private val base = Paint()
               private val paints = Array(4) { Paint(Paint.ANTI_ALIAS_FLAG) }
-
-              init {
-                  base.color = Ui.PAGE_END
-              }
+              private val hsv = FloatArray(3)
 
               private fun lerp(a: Int, b: Int, t: Float): Int {
                   val r = Color.red(a) + ((Color.red(b) - Color.red(a)) * t).toInt()
@@ -1354,15 +1423,29 @@ jobs:
                   return Color.rgb(r, g, bl)
               }
 
-              private fun rebuildShaders(radius: Float) {
+              private fun blobColor(i: Int, timeMs: Long): Int {
+                  if (Ui.cycle) {
+                      // Xoay sắc độ: 60 giây một vòng, mỗi mảng lệch nhau 85 độ.
+                      hsv[0] = ((timeMs % 60000L).toFloat() / 60000f * 360f + i * 85f) % 360f
+                      hsv[1] = if (Ui.dark) 0.75f else 0.60f
+                      hsv[2] = 1f
+                      return Color.HSVToColor(hsv)
+                  }
+                  return lerp(calm[i], hot[i], mix)
+              }
+
+              private fun rebuildShaders(radius: Float, timeMs: Long) {
+                  val alpha = if (Ui.dark) 150 else 225
                   for (i in 0 until 4) {
-                      val c = lerp(calm[i], hot[i], mix)
-                      val center = Color.argb(225, Color.red(c), Color.green(c), Color.blue(c))
+                      val c = blobColor(i, timeMs)
+                      val center = Color.argb(alpha, Color.red(c), Color.green(c), Color.blue(c))
                       val edge = Color.argb(0, Color.red(c), Color.green(c), Color.blue(c))
                       paints[i].shader = RadialGradient(0f, 0f, radius, center, edge, Shader.TileMode.CLAMP)
                   }
                   shaderMix = mix
                   shaderRadius = radius
+                  shaderDark = Ui.dark
+                  shaderCycle = Ui.cycle
               }
 
               override fun onDraw(canvas: Canvas) {
@@ -1371,17 +1454,25 @@ jobs:
                   val h = height.toFloat()
                   if (w <= 0f || h <= 0f) return
 
-                  // Chuyển màu mượt
+                  // Chuyển màu mượt giữa hai trạng thái
                   if (mix != target) {
                       val step = 0.04f
                       mix = if (mix < target) minOf(target, mix + step) else maxOf(target, mix - step)
                   }
+                  val now = SystemClock.uptimeMillis()
                   val radius = maxOf(w, h) * 0.62f
-                  if (shaderMix != mix || shaderRadius != radius) rebuildShaders(radius)
+                  val key = if (Ui.cycle) now / 120L else 0L
+                  if (shaderMix != mix || shaderRadius != radius || shaderDark != Ui.dark ||
+                      shaderCycle != Ui.cycle || shaderKey != key
+                  ) {
+                      rebuildShaders(radius, now)
+                      shaderKey = key
+                  }
 
+                  base.color = Ui.PAGE_END
                   canvas.drawRect(0f, 0f, w, h, base)
 
-                  val t = SystemClock.uptimeMillis().toFloat()
+                  val t = now.toFloat()
                   for (i in 0 until 4) {
                       val ang = t / period[i] * 6.2831853f + i * 1.7f
                       val x = w * bx[i] + w * 0.10f * sin(ang)
@@ -1429,6 +1520,7 @@ jobs:
               private var reminder: TextView? = null
               private var hint: TextView? = null
               private var shownAt = 0L
+              private var homeAction: (() -> Unit)? = null
 
               /** Trả về false nếu không hiện được cửa sổ (khi đó người gọi nên đẩy về màn hình chính ngay). */
               fun show(ctx: Context, type: Int, remainingMs: Long, who: Int, onTimeUp: () -> Unit): Boolean {
@@ -1445,12 +1537,13 @@ jobs:
                       r.centerText = LockStore.formatMs(remainingMs)
                       r.subText = "còn lại"
                   }
+                  homeAction = onTimeUp
                   reminder?.text = LockStore.reminder(ctx)
                   val left = HOLD_MS - (SystemClock.elapsedRealtime() - shownAt)
                   if (left > 0L) {
-                      hint?.text = "Tự về màn hình chính sau " + ((left + 999L) / 1000L) + " giây"
+                      hint?.text = "Tự thoát sau " + ((left + 999L) / 1000L) + "s"
                   } else {
-                      hint?.text = "Đang về màn hình chính…"
+                      hint?.text = "Đang thoát…"
                       onTimeUp()
                   }
                   return true
@@ -1469,6 +1562,7 @@ jobs:
                   ring = null
                   reminder = null
                   hint = null
+                  homeAction = null
                   owner = OWNER_NONE
               }
 
@@ -1477,6 +1571,7 @@ jobs:
                       !Settings.canDrawOverlays(ctx)
                   ) return false
                   val manager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
+                  Ui.refreshMode(ctx)
 
                   val box = LinearLayout(ctx)
                   box.orientation = LinearLayout.VERTICAL
@@ -1496,7 +1591,7 @@ jobs:
                   rem.gravity = Gravity.CENTER
                   box.addView(rem, Ui.lp(ctx, 20))
 
-                  val h = Ui.text(ctx, "Bấm nút Home để thoát", 14f, Ui.TEXT)
+                  val h = Ui.text(ctx, "", 14f, Ui.MUTED)
                   h.gravity = Gravity.CENTER
                   box.addView(h, Ui.lp(ctx, 20))
 
@@ -1505,6 +1600,20 @@ jobs:
                   aurora.locked = true
                   frame.addView(aurora, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
                   frame.addView(box, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+
+                  // Nút nhỏ để thoát ngay
+                  val exit = TextView(ctx)
+                  exit.text = "×"
+                  exit.textSize = 26f
+                  exit.gravity = Gravity.CENTER
+                  exit.setTextColor(Ui.TEXT)
+                  exit.background = Ui.rounded(ctx, Ui.CARD_FILL, 22, Ui.BORDER, 1)
+                  exit.setOnClickListener { homeAction?.invoke() }
+                  val ep = FrameLayout.LayoutParams(Ui.dp(ctx, 44), Ui.dp(ctx, 44))
+                  ep.gravity = Gravity.TOP or Gravity.END
+                  ep.topMargin = Ui.dp(ctx, 52)
+                  ep.rightMargin = Ui.dp(ctx, 20)
+                  frame.addView(exit, ep)
 
                   val lp = WindowManager.LayoutParams(
                       WindowManager.LayoutParams.MATCH_PARENT,
@@ -1534,7 +1643,6 @@ jobs:
           package com.khoamt5.app
 
           import android.app.Activity
-          import android.app.AlertDialog
           import android.content.Intent
           import android.content.pm.PackageManager
           import android.graphics.Color
@@ -1575,6 +1683,7 @@ jobs:
               private lateinit var keepBtn: TextView
               private lateinit var breakBtn: TextView
 
+              private var builtDark = false
               private val chipValues = longArrayOf(15L, 60L, LockStore.END_OF_DAY)
               private var lastChipSig = ""
               private var lastLockedUi: Boolean? = null
@@ -1589,11 +1698,17 @@ jobs:
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   Ui.setupWindow(this)
+                  builtDark = Ui.dark
                   setContentView(buildUi())
               }
 
               override fun onResume() {
                   super.onResume()
+                  Ui.refreshMode(this)
+                  if (Ui.dark != builtDark) {
+                      recreate()
+                      return
+                  }
                   updateStreak()
                   handler.removeCallbacks(tick)
                   handler.post(tick)
@@ -1678,7 +1793,7 @@ jobs:
 
                   // Cảnh báo thiếu quyền
                   banner = Ui.card(c)
-                  banner.background = Ui.rounded(c, Color.parseColor("#FFF7E6"), 16, Color.parseColor("#F5D9A8"), 1)
+                  banner.background = Ui.rounded(c, Ui.BANNER_BG, 16, Ui.BANNER_BORDER, 1)
                   banner.addView(Ui.text(c, "Chưa đủ quyền để khóa hoạt động", 14f, Ui.TEXT, true))
                   banner.addView(
                       Ui.text(c, "Cấp quyền trong Cài đặt trước khi dùng để việc khóa không bị hở.", 13f, Ui.MUTED),
@@ -1848,7 +1963,7 @@ jobs:
                   chip.text = label
                   chip.background = if (selected) Ui.rounded(this, Ui.TEXT, 14)
                   else Ui.rounded(this, Ui.CARD, 14, Ui.BORDER, 1)
-                  chip.setTextColor(if (selected) Color.WHITE else Ui.TEXT)
+                  chip.setTextColor(if (selected) Ui.ON_TEXT else Ui.TEXT)
                   chip.alpha = if (locked) 0.45f else 1f
               }
 
@@ -1890,7 +2005,7 @@ jobs:
                       refresh()
                   } else {
                       val labels = Array(LockStore.STEPS_MIN.size) { LockStore.label(LockStore.STEPS_MIN[it]) }
-                      AlertDialog.Builder(this)
+                      Ui.dialog(this)
                           .setTitle("Chọn thời gian khóa")
                           .setItems(labels) { _, which ->
                               LockStore.setSelectedMinutes(this, LockStore.STEPS_MIN[which])
@@ -1947,7 +2062,7 @@ jobs:
                   )
                   val names = Array(pkgs.size) { map[pkgs[it]] ?: pkgs[it] }
                   val checked = BooleanArray(pkgs.size) { pkgs[it] in selected }
-                  AlertDialog.Builder(this)
+                  Ui.dialog(this)
                       .setTitle("Chọn app cần khóa")
                       .setMultiChoiceItems(names, checked) { _, which, isChecked -> checked[which] = isChecked }
                       .setPositiveButton("Lưu") { _, _ ->
@@ -1998,7 +2113,7 @@ jobs:
                   }
                   val minutes = LockStore.resolveMinutes(LockStore.selectedMinutes(this))
                   if (minutes >= 60L) {
-                      AlertDialog.Builder(this)
+                      Ui.dialog(this)
                           .setTitle("Khóa " + LockStore.label(minutes) + "?")
                           .setMessage("Trong thời gian này các app đã chọn không mở được và không có nút dừng.")
                           .setPositiveButton("Khóa") { _, _ -> doLock(minutes) }
@@ -2051,6 +2166,7 @@ jobs:
               private val rows = ArrayList<Row>()
               private val handler = Handler(Looper.getMainLooper())
               private lateinit var layer1: TextView
+              private var builtDark = false
               private lateinit var layer2: TextView
 
               private val tick = object : Runnable {
@@ -2063,6 +2179,7 @@ jobs:
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   Ui.setupWindow(this)
+                  builtDark = Ui.dark
                   val c = this
                   val root = LinearLayout(c)
                   root.orientation = LinearLayout.VERTICAL
@@ -2133,6 +2250,28 @@ jobs:
                   )
                   root.addView(card, Ui.lp(c, 18))
 
+                  // Giao diện
+                  root.addView(Ui.text(c, "Giao diện", 13f, Ui.MUTED, true), Ui.lp(c, 22))
+                  val look = Ui.card(c)
+                  look.addView(Ui.text(c, "Chế độ nền", 12f, Ui.MUTED))
+                  look.addView(
+                      Ui.segment(c, arrayOf("Tự động", "Sáng", "Tối"), LockStore.themeMode(c)) { i ->
+                          LockStore.setThemeMode(c, i)
+                          recreate()
+                      },
+                      Ui.lp(c, 8)
+                  )
+                  look.addView(Ui.text(c, "Màu nền", 12f, Ui.MUTED), Ui.lp(c, 14))
+                  look.addView(
+                      Ui.segment(c, arrayOf("Theo trạng thái", "Chuyển màu từ từ"), LockStore.colorMode(c)) { i ->
+                          LockStore.setColorMode(c, i)
+                          Ui.refreshMode(c)
+                          recreate()
+                      },
+                      Ui.lp(c, 8)
+                  )
+                  root.addView(look, Ui.lp(c, 8))
+
                   // Trạng thái hai lớp
                   root.addView(Ui.text(c, "Trạng thái hai lớp chặn", 13f, Ui.MUTED, true), Ui.lp(c, 22))
                   val sc = Ui.card(c)
@@ -2172,6 +2311,11 @@ jobs:
 
               override fun onResume() {
                   super.onResume()
+                  Ui.refreshMode(this)
+                  if (Ui.dark != builtDark) {
+                      recreate()
+                      return
+                  }
                   handler.removeCallbacks(tick)
                   handler.post(tick)
               }
@@ -2261,10 +2405,12 @@ jobs:
               private lateinit var statKept: TextView
               private lateinit var statLocks: TextView
               private lateinit var list: LinearLayout
+              private var builtDark = false
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   Ui.setupWindow(this)
+                  builtDark = Ui.dark
                   val c = this
                   val root = LinearLayout(c)
                   root.orientation = LinearLayout.VERTICAL
@@ -2293,6 +2439,11 @@ jobs:
 
               override fun onResume() {
                   super.onResume()
+                  Ui.refreshMode(this)
+                  if (Ui.dark != builtDark) {
+                      recreate()
+                      return
+                  }
                   render()
               }
 

@@ -214,7 +214,9 @@ jobs:
           import android.provider.Settings
           import org.json.JSONArray
           import org.json.JSONObject
+          import java.text.SimpleDateFormat
           import java.util.Calendar
+          import java.util.Date
           import java.util.Locale
 
           /** Một lần khóa trong nhật ký. */
@@ -504,6 +506,37 @@ jobs:
                       }
                   }
                   return n
+              }
+
+              /** Toàn bộ nhật ký và chuỗi ngày dưới dạng văn bản, để chia sẻ hoặc sao lưu. */
+              fun exportText(c: Context): String {
+                  val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                  val log = readLog(c)
+                  val sb = StringBuilder()
+                  sb.append("Block - nhật ký\n")
+                  sb.append("Xuất lúc ").append(fmt.format(Date())).append("\n")
+                  sb.append("Chuỗi hiện tại: ").append(streak(c)).append(" ngày liên tiếp · ")
+                  sb.append(keptTotal(c)).append(" ngày giữ luật · ")
+                  sb.append(log.size).append(" lần khóa\n\n")
+                  sb.append("CÁC LẦN KHÓA\n")
+                  if (log.isEmpty()) sb.append("(chưa có)\n")
+                  for (e in log) {
+                      sb.append("- ").append(fmt.format(Date(e.time))).append(" · ").append(label(e.minutes))
+                      if (e.apps.isNotBlank()) sb.append(" · ").append(e.apps)
+                      sb.append("\n")
+                      if (e.note.isNotBlank()) sb.append("  Ghi chú: ").append(e.note).append("\n")
+                  }
+                  sb.append("\nNGÀY GIỮ LUẬT\n")
+                  val o = readDays(c)
+                  val keys = ArrayList<String>()
+                  val it = o.keys()
+                  while (it.hasNext()) keys.add(it.next())
+                  keys.sortDescending()
+                  if (keys.isEmpty()) sb.append("(chưa có)\n")
+                  for (k in keys) {
+                      sb.append(k).append(": ").append(if (o.optBoolean(k)) "giữ đúng luật" else "đã phá luật").append("\n")
+                  }
+                  return sb.toString()
               }
 
               fun keptTotal(c: Context): Int {
@@ -2390,10 +2423,15 @@ jobs:
           package com.khoamt5.app
 
           import android.app.Activity
+          import android.content.ClipData
+          import android.content.ClipboardManager
+          import android.content.Context
+          import android.content.Intent
           import android.os.Bundle
           import android.view.Gravity
           import android.widget.LinearLayout
           import android.widget.TextView
+          import android.widget.Toast
           import java.text.SimpleDateFormat
           import java.util.Date
           import java.util.Locale
@@ -2425,9 +2463,15 @@ jobs:
                   statLocks = addStat(stats, "lần khóa", true)
                   root.addView(stats, Ui.lp(c, 14))
 
+                  val actions = LinearLayout(c)
+                  actions.orientation = LinearLayout.HORIZONTAL
+                  actions.addView(Ui.link(c, "Chia sẻ / sao lưu (Notion…)") { shareLog() })
+                  actions.addView(Ui.link(c, "   Sao chép") { copyLog() })
+                  root.addView(actions, Ui.lp(c, 12))
+
                   root.addView(
                       Ui.text(c, "Chạm vào một lần khóa để ghi vì sao bạn khóa.", 13f, Ui.MUTED),
-                      Ui.lp(c, 14)
+                      Ui.lp(c, 10)
                   )
 
                   list = LinearLayout(c)
@@ -2445,6 +2489,28 @@ jobs:
                       return
                   }
                   render()
+              }
+
+              private fun shareLog() {
+                  try {
+                      val i = Intent(Intent.ACTION_SEND)
+                      i.type = "text/plain"
+                      i.putExtra(Intent.EXTRA_SUBJECT, "Block - nhật ký")
+                      i.putExtra(Intent.EXTRA_TEXT, LockStore.exportText(this))
+                      startActivity(Intent.createChooser(i, "Gửi nhật ký tới"))
+                  } catch (_: Exception) {
+                      Toast.makeText(this, "Không mở được danh sách chia sẻ", Toast.LENGTH_SHORT).show()
+                  }
+              }
+
+              private fun copyLog() {
+                  try {
+                      val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                      cm.setPrimaryClip(ClipData.newPlainText("Block", LockStore.exportText(this)))
+                      Toast.makeText(this, "Đã sao chép nhật ký", Toast.LENGTH_SHORT).show()
+                  } catch (_: Exception) {
+                      Toast.makeText(this, "Không sao chép được", Toast.LENGTH_SHORT).show()
+                  }
               }
 
               private fun addStat(parent: LinearLayout, label: String, withLeftMargin: Boolean): TextView {

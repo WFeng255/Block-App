@@ -53,6 +53,14 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+              <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+              <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
               <!-- Cho phép app liệt kê các app có biểu tượng trên màn hình để người dùng tick chọn. -->
               <queries>
                   <intent>
@@ -73,9 +81,7 @@ jobs:
 
               <application
                   android:allowBackup="false"
-                  android:icon="@mipmap/ic_launcher"
-                  android:roundIcon="@mipmap/ic_launcher_round"
-                  android:label="Block"
+                  android:label="Khóa App"
                   android:theme="@android:style/Theme.Material.NoActionBar">
 
                   <activity
@@ -88,10 +94,11 @@ jobs:
                       </intent-filter>
                   </activity>
 
+                  <!-- Lớp chặn 1: Trợ năng -->
                   <service
                       android:name=".LockService"
                       android:exported="false"
-                      android:label="Block"
+                      android:label="Khóa App"
                       android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
                       <intent-filter>
                           <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -101,6 +108,24 @@ jobs:
                           android:resource="@xml/accessibility_service_config" />
                   </service>
 
+                  <!-- Lớp chặn 2: dịch vụ giám sát chạy nền -->
+                  <service
+                      android:name=".WatcherService"
+                      android:exported="false"
+                      android:foregroundServiceType="specialUse">
+                      <property
+                          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                          android:value="Tu khoa cac app do nguoi dung chon trong thoi gian dat truoc" />
+                  </service>
+
+                  <receiver
+                      android:name=".BootReceiver"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.BOOT_COMPLETED" />
+                      </intent-filter>
+                  </receiver>
+
               </application>
 
           </manifest>
@@ -109,7 +134,7 @@ jobs:
           cat > app/src/main/res/xml/accessibility_service_config.xml <<'KHOAEOF'
           <?xml version="1.0" encoding="utf-8"?>
           <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+              android:accessibilityEventTypes="typeWindowStateChanged"
               android:accessibilityFeedbackType="feedbackGeneric"
               android:accessibilityFlags="flagDefault"
               android:canRetrieveWindowContent="false"
@@ -122,48 +147,6 @@ jobs:
           <resources>
               <string name="service_desc">Chỉ theo dõi việc mở các app bạn đã chọn khóa. Khi đang trong thời gian khóa, dịch vụ này đưa bạn về màn hình chính mỗi lần mở một app trong danh sách. Không đọc nội dung màn hình, không thu thập dữ liệu.</string>
           </resources>
-          KHOAEOF
-          mkdir -p app/src/main/res/mipmap-anydpi-v26
-          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'KHOAEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@drawable/ic_launcher_background" />
-              <foreground android:drawable="@drawable/ic_launcher_foreground" />
-          </adaptive-icon>
-          KHOAEOF
-          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-          mkdir -p app/src/main/res/drawable
-          cat > app/src/main/res/drawable/ic_launcher_background.xml <<'KHOAEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
-              <path
-                  android:fillColor="#12161C"
-                  android:pathData="M0,0h108v108h-108z" />
-          </vector>
-          KHOAEOF
-          cat > app/src/main/res/drawable/ic_launcher_foreground.xml <<'KHOAEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
-              <path
-                  android:strokeColor="#FFFFFF"
-                  android:strokeWidth="6"
-                  android:strokeLineCap="round"
-                  android:pathData="M42,50 L42,42 A12,12 0 0 1 66,42 L66,50" />
-              <path
-                  android:fillColor="#D93636"
-                  android:pathData="M34,50 H74 a4,4 0 0 1 4,4 V76 a4,4 0 0 1 -4,4 H34 a4,4 0 0 1 -4,-4 V54 a4,4 0 0 1 4,-4 z" />
-              <path
-                  android:fillColor="#FFFFFF"
-                  android:pathData="M54,57 a5,5 0 1 1 0,10 a5,5 0 1 1 0,-10 z M52.5,66 H55.5 V73 H52.5 z" />
-          </vector>
           KHOAEOF
           mkdir -p app/src/main/java/com/khoamt5/app
           cat > app/src/main/java/com/khoamt5/app/LockStore.kt <<'KHOAEOF'
@@ -180,26 +163,20 @@ jobs:
           object LockStore {
               const val MT5_PACKAGE = "net.metaquotes.metatrader5"
 
-              /** Các mức thời gian khóa (phút): +5 phút mỗi lần bấm (dưới 1 giờ), rồi +15, +30, +60 phút, tới 24 giờ. */
-              val STEPS_MIN: LongArray = buildList {
-                  var m = 5L
-                  while (m <= 1440L) {
-                      add(m)
-                      m += when {
-                          m < 60L -> 5L
-                          m < 240L -> 15L
-                          m < 480L -> 30L
-                          else -> 60L
-                      }
-                  }
-              }.toLongArray()
-              private val DEFAULT_INDEX = STEPS_MIN.indexOf(15L) // 15 phút
+              /** Các mức thời gian khóa (phút): 1 phút (để thử) ... 24 giờ. */
+              val STEPS_MIN = longArrayOf(1, 5, 15, 30, 60, 120, 240, 480, 720, 1440)
+              private const val DEFAULT_INDEX = 2 // 15 phút
 
               private const val PREFS = "lock"
               private const val KEY_STARTED = "started"
               private const val KEY_UNTIL = "until"
-              private const val KEY_SELECTED = "selected"
+              private const val KEY_SELECTED = "selected2"
               private const val KEY_PACKAGES = "packages"
+
+              // Thông tin chẩn đoán: mỗi lớp chặn vừa "thấy" app nào mở.
+              @Volatile var accSeen: String = ""
+              @Volatile var watchSeen: String = ""
+              @Volatile var watchAliveAt: Long = 0L
 
               private fun prefs(c: Context) =
                   c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -208,6 +185,15 @@ jobs:
                   minutes < 60L -> "$minutes phút"
                   minutes % 60L == 0L -> "${minutes / 60L} giờ"
                   else -> "${minutes / 60L} giờ ${minutes % 60L} phút"
+              }
+
+              fun formatMs(ms: Long): String {
+                  val s = (ms + 999L) / 1000L
+                  val h = s / 3600L
+                  val m = (s % 3600L) / 60L
+                  val sec = s % 60L
+                  return if (h > 0L) String.format("%d:%02d:%02d", h, m, sec)
+                  else String.format("%02d:%02d", m, sec)
               }
 
               fun selectedIndex(c: Context): Int =
@@ -260,6 +246,8 @@ jobs:
                   return result
               }
 
+              fun isLocked(c: Context): Boolean = remainingMs(c) > 0L
+
               /** Bắt đầu khóa. Đang khóa rồi thì không làm gì (không thể kéo dài hay rút ngắn). */
               fun start(c: Context, minutes: Long) {
                   if (remainingMs(c) > 0) return
@@ -293,81 +281,30 @@ jobs:
           import android.view.accessibility.AccessibilityEvent
 
           /**
-           * Nghe sự kiện đổi cửa sổ. Chỉ phản ứng khi app vừa hiện lên nằm trong danh sách
-           * app bị khóa và đang trong thời gian khóa: đẩy về màn hình chính.
+           * Lớp chặn 1 (Trợ năng): nghe sự kiện đổi cửa sổ. Chỉ phản ứng khi app vừa hiện lên
+           * nằm trong danh sách app bị khóa và đang trong thời gian khóa: đẩy về màn hình chính.
            * Không đọc nội dung màn hình (canRetrieveWindowContent = false).
            */
           class LockService : AccessibilityService() {
 
               private var lastLaunch = 0L
-              private var lastHome = 0L
-          
-              companion object {
-                  @Volatile
-                  var instance: LockService? = null
-          
-                  // Thông tin chẩn đoán, hiện ở cuối màn hình chính.
-                  @Volatile
-                  var events = 0
-          
-                  @Volatile
-                  var lastPkg = "(chưa có)"
-          
-                  @Volatile
-                  var lastNote = ""
-          
-                  /** Gửi lệnh về màn hình chính. Trả về false nếu dịch vụ chưa chạy. */
-                  fun goHome(): Boolean =
-                      instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) ?: false
-              }
-          
-              override fun onServiceConnected() {
-                  super.onServiceConnected()
-                  instance = this
-              }
-          
-              override fun onUnbind(intent: Intent?): Boolean {
-                  instance = null
-                  return super.onUnbind(intent)
-              }
-          
-              override fun onDestroy() {
-                  instance = null
-                  super.onDestroy()
-              }
               private val protectedPkgs by lazy { LockStore.protectedPackages(this) }
 
               override fun onAccessibilityEvent(event: AccessibilityEvent?) {
                   if (event == null) return
-                  if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-                      event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                  ) return
+                  if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
                   val pkg = event.packageName?.toString() ?: return
-                  val isState = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                  if (isState) {
-                      events++
-                      lastPkg = pkg
+
+                  if (pkg != packageName && pkg != "com.android.systemui") {
+                      LockStore.accSeen = pkg
                   }
-                  if (pkg !in LockStore.lockedPackages(this)) {
-                      if (isState) lastNote = "không nằm trong danh sách khóa"
-                      return
-                  }
-                  if (pkg in protectedPkgs) {
-                      if (isState) lastNote = "app được miễn khóa"
-                      return
-                  }
-                  if (LockStore.remainingMs(this) <= 0L) {
-                      if (isState) lastNote = "đang không khóa"
-                      return
-                  }
-                  lastNote = "ĐÃ CHẶN"
+
+                  if (pkg !in LockStore.lockedPackages(this)) return
+                  if (pkg in protectedPkgs) return
+                  if (LockStore.remainingMs(this) <= 0L) return
 
                   // Bước chắc chắn: đẩy app ra màn hình chính.
-                  val t = SystemClock.elapsedRealtime()
-                  if (t - lastHome > 400L) {
-                      lastHome = t
-                      performGlobalAction(GLOBAL_ACTION_HOME)
-                  }
+                  performGlobalAction(GLOBAL_ACTION_HOME)
 
                   // Thêm: mở màn hình đếm ngược của app (có thể bị hệ thống chặn, không sao).
                   val now = SystemClock.elapsedRealtime()
@@ -386,23 +323,275 @@ jobs:
           }
           KHOAEOF
           mkdir -p app/src/main/java/com/khoamt5/app
+          cat > app/src/main/java/com/khoamt5/app/WatcherService.kt <<'KHOAEOF'
+          package com.khoamt5.app
+
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.app.PendingIntent
+          import android.app.Service
+          import android.app.usage.UsageEvents
+          import android.app.usage.UsageStatsManager
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.ServiceInfo
+          import android.graphics.Color
+          import android.graphics.PixelFormat
+          import android.graphics.Typeface
+          import android.os.Build
+          import android.os.Handler
+          import android.os.IBinder
+          import android.os.Looper
+          import android.os.SystemClock
+          import android.provider.Settings
+          import android.view.Gravity
+          import android.view.WindowManager
+          import android.widget.TextView
+
+          /**
+           * Lớp chặn 2: dịch vụ chạy nền (có thông báo cố định nên khó bị hệ thống tắt).
+           * Cứ 0,3 giây đọc xem app nào đang ở trên cùng (qua Usage access). Nếu đó là app bị khóa
+           * thì che kín màn hình bằng một lớp phủ đếm ngược và đẩy về màn hình chính.
+           * Chỉ chạy trong lúc đang khóa, hết giờ tự tắt.
+           */
+          class WatcherService : Service() {
+
+              companion object {
+                  private const val CHANNEL_ID = "khoa_app_watch"
+                  private const val NOTIF_ID = 1001
+                  private const val EV_FG = 1          // app lên trước
+                  private const val EV_BG = 2          // app xuống nền
+                  private const val EV_SCREEN_OFF = 16 // tắt màn hình
+                  private const val POLL_MS = 300L
+
+                  fun start(c: Context) {
+                      try {
+                          c.startForegroundService(Intent(c, WatcherService::class.java))
+                      } catch (_: Exception) {
+                      }
+                  }
+              }
+
+              private val handler = Handler(Looper.getMainLooper())
+              private var windowManager: WindowManager? = null
+              private var overlay: TextView? = null
+              private var fgPackage: String? = null
+              private var lastEventTs = 0L
+              private var lastHome = 0L
+              private var protectedPkgs: Set<String> = emptySet()
+              private var running = false
+
+              private val poll = object : Runnable {
+                  override fun run() {
+                      if (!running) return
+                      val remaining = LockStore.remainingMs(this@WatcherService)
+                      if (remaining <= 0L) {
+                          running = false
+                          removeOverlay()
+                          stopForeground(STOP_FOREGROUND_REMOVE)
+                          stopSelf()
+                          return
+                      }
+                      LockStore.watchAliveAt = System.currentTimeMillis()
+                      refreshForeground()
+
+                      val pkg = fgPackage
+                      if (pkg != null &&
+                          pkg in LockStore.lockedPackages(this@WatcherService) &&
+                          pkg !in protectedPkgs
+                      ) {
+                          showOverlay(remaining)
+                      } else {
+                          removeOverlay()
+                      }
+                      handler.postDelayed(this, POLL_MS)
+                  }
+              }
+
+              override fun onCreate() {
+                  super.onCreate()
+                  windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                  protectedPkgs = LockStore.protectedPackages(this)
+              }
+
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  goForeground()
+                  if (!LockStore.isLocked(this)) {
+                      running = false
+                      stopForeground(STOP_FOREGROUND_REMOVE)
+                      stopSelf()
+                      return START_NOT_STICKY
+                  }
+                  if (!running) {
+                      running = true
+                      lastEventTs = System.currentTimeMillis() - 2L * 60L * 60L * 1000L
+                      handler.post(poll)
+                  }
+                  return START_STICKY
+              }
+
+              override fun onBind(intent: Intent?): IBinder? = null
+
+              override fun onDestroy() {
+                  running = false
+                  handler.removeCallbacksAndMessages(null)
+                  removeOverlay()
+                  super.onDestroy()
+              }
+
+              private fun goForeground() {
+                  val nm = getSystemService(NotificationManager::class.java)
+                  nm.createNotificationChannel(
+                      NotificationChannel(CHANNEL_ID, "Khóa App", NotificationManager.IMPORTANCE_LOW)
+                  )
+                  val open = PendingIntent.getActivity(
+                      this, 0, Intent(this, MainActivity::class.java),
+                      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                  )
+                  val n = Notification.Builder(this, CHANNEL_ID)
+                      .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                      .setContentTitle("Khóa App đang chạy")
+                      .setContentText("Đang giám sát các app bị khóa")
+                      .setContentIntent(open)
+                      .setOngoing(true)
+                      .build()
+                  if (Build.VERSION.SDK_INT >= 34) {
+                      startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                  } else {
+                      startForeground(NOTIF_ID, n)
+                  }
+              }
+
+              /** Cập nhật app đang ở trên cùng dựa trên sự kiện sử dụng mới nhất. */
+              private fun refreshForeground() {
+                  val usm = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return
+                  try {
+                      val events = usm.queryEvents(lastEventTs, System.currentTimeMillis())
+                      val e = UsageEvents.Event()
+                      var maxTs = lastEventTs
+                      while (events.hasNextEvent()) {
+                          events.getNextEvent(e)
+                          if (e.timeStamp > maxTs) maxTs = e.timeStamp
+                          when (e.eventType) {
+                              EV_FG -> fgPackage = e.packageName
+                              EV_BG -> if (e.packageName == fgPackage) fgPackage = null
+                              EV_SCREEN_OFF -> fgPackage = null
+                          }
+                      }
+                      lastEventTs = maxTs
+                  } catch (_: Exception) {
+                  }
+                  val p = fgPackage
+                  if (p != null && p != packageName && p != "com.android.systemui") {
+                      LockStore.watchSeen = p
+                  }
+              }
+
+              private fun createOverlay(): TextView? {
+                  val wm = windowManager ?: return null
+                  if (!Settings.canDrawOverlays(this)) return null
+                  val tv = TextView(this).apply {
+                      setBackgroundColor(Color.parseColor("#12161C"))
+                      setTextColor(Color.WHITE)
+                      textSize = 26f
+                      gravity = Gravity.CENTER
+                      setTypeface(typeface, Typeface.BOLD)
+                  }
+                  val lp = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.OPAQUE
+                  )
+                  return try {
+                      wm.addView(tv, lp)
+                      overlay = tv
+                      tv
+                  } catch (_: Exception) {
+                      null
+                  }
+              }
+
+              private fun showOverlay(remainingMs: Long) {
+                  val view = overlay ?: createOverlay()
+                  if (view != null) {
+                      view.text = "ĐANG KHÓA\n\nCòn " + LockStore.formatMs(remainingMs) +
+                          "\n\nBấm nút Home để thoát"
+                  }
+                  goHome()
+              }
+
+              private fun removeOverlay() {
+                  val v = overlay ?: return
+                  try {
+                      windowManager?.removeView(v)
+                  } catch (_: Exception) {
+                  }
+                  overlay = null
+              }
+
+              private fun goHome() {
+                  val now = SystemClock.elapsedRealtime()
+                  if (now - lastHome < 800L) return
+                  lastHome = now
+                  try {
+                      startActivity(
+                          Intent(Intent.ACTION_MAIN)
+                              .addCategory(Intent.CATEGORY_HOME)
+                              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      )
+                  } catch (_: Exception) {
+                  }
+              }
+          }
+          KHOAEOF
+          mkdir -p app/src/main/java/com/khoamt5/app
+          cat > app/src/main/java/com/khoamt5/app/BootReceiver.kt <<'KHOAEOF'
+          package com.khoamt5.app
+
+          import android.content.BroadcastReceiver
+          import android.content.Context
+          import android.content.Intent
+
+          /** Khởi động lại máy giữa lúc đang khóa thì bật lại dịch vụ giám sát. */
+          class BootReceiver : BroadcastReceiver() {
+              override fun onReceive(context: Context, intent: Intent?) {
+                  if (intent?.action == Intent.ACTION_BOOT_COMPLETED && LockStore.isLocked(context)) {
+                      WatcherService.start(context)
+                  }
+              }
+          }
+          KHOAEOF
+          mkdir -p app/src/main/java/com/khoamt5/app
           cat > app/src/main/java/com/khoamt5/app/MainActivity.kt <<'KHOAEOF'
           package com.khoamt5.app
 
           import android.app.Activity
           import android.app.AlertDialog
+          import android.app.AppOpsManager
           import android.content.ComponentName
+          import android.content.Context
           import android.content.Intent
+          import android.content.pm.PackageManager
           import android.graphics.Color
           import android.graphics.Typeface
           import android.graphics.drawable.GradientDrawable
           import android.net.Uri
+          import android.os.Build
           import android.os.Bundle
           import android.os.Handler
           import android.os.Looper
+          import android.os.PowerManager
+          import android.os.Process
           import android.provider.Settings
           import android.view.Gravity
           import android.view.View
+          import android.view.ViewGroup
+          import android.widget.Button
           import android.widget.FrameLayout
           import android.widget.LinearLayout
           import android.widget.ScrollView
@@ -413,35 +602,28 @@ jobs:
 
               private val handler = Handler(Looper.getMainLooper())
 
-              private val cBg = Color.parseColor("#0F1318")
-              private val cCard = Color.parseColor("#1A2029")
-              private val cChip = Color.parseColor("#2A3340")
-              private val cGray = Color.parseColor("#8B96A5")
-              private val cRed = Color.parseColor("#E5484D")
-              private val cGreen = Color.parseColor("#30A46C")
-              private val cBlue = Color.parseColor("#7FB2FF")
-              private val cAmber = Color.parseColor("#F5A524")
-              private val cWarnBg = Color.parseColor("#2B2214")
-
-              private lateinit var statusPill: TextView
-              private lateinit var caption: TextView
+              private lateinit var title: TextView
               private lateinit var countdown: TextView
+              private lateinit var appsText: TextView
+              private lateinit var selectBtn: Button
               private lateinit var durationRow: LinearLayout
               private lateinit var durationLabel: TextView
-              private lateinit var minusBtn: TextView
-              private lateinit var plusBtn: TextView
-              private lateinit var appsText: TextView
-              private lateinit var selectBtn: TextView
-              private lateinit var lockBtn: TextView
+              private lateinit var minusBtn: Button
+              private lateinit var plusBtn: Button
+              private lateinit var lockBtn: Button
               private lateinit var hint: TextView
-              private lateinit var setupCard: LinearLayout
-              private lateinit var permBtn: TextView
-              private lateinit var infoBtn: TextView
-              private lateinit var debug: TextView
-              private lateinit var testBtn: TextView
+              private lateinit var statusText: TextView
+              private lateinit var usageBtn: Button
+              private lateinit var overlayBtn: Button
+              private lateinit var notifBtn: Button
+              private lateinit var battBtn: Button
+              private lateinit var accBtn: Button
+              private lateinit var infoBtn: Button
 
               private var summary: String = ""
               private var selectCount: Int = 0
+              private var lastRestart: Long = 0L
+              private val labelCache = HashMap<String, String>()
 
               private val tick = object : Runnable {
                   override fun run() {
@@ -452,8 +634,6 @@ jobs:
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  window.statusBarColor = cBg
-                  window.navigationBarColor = cBg
                   buildUi()
               }
 
@@ -470,182 +650,194 @@ jobs:
 
               private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-              private fun bg(color: Int, radiusDp: Int = 0, oval: Boolean = false): GradientDrawable {
-                  val d = GradientDrawable()
-                  if (oval) d.shape = GradientDrawable.OVAL else d.cornerRadius = dp(radiusDp).toFloat()
-                  d.setColor(color)
-                  return d
+              private fun roundedBg(color: Int): GradientDrawable = GradientDrawable().apply {
+                  setColor(color)
+                  cornerRadius = dp(24).toFloat()
               }
 
-              private fun tv(text: String, size: Float, color: Int, bold: Boolean = false): TextView =
-                  TextView(this).apply {
-                      this.text = text
-                      textSize = size
-                      setTextColor(color)
-                      if (bold) setTypeface(typeface, Typeface.BOLD)
-                  }
-
-              private fun pillButton(text: String, fill: Int, textColor: Int, heightDp: Int): TextView =
-                  tv(text, 16f, textColor, true).apply {
-                      gravity = Gravity.CENTER
-                      background = bg(fill, heightDp / 2)
-                      isClickable = true
-                      minimumHeight = dp(heightDp)
-                      setPadding(dp(20), 0, dp(20), 0)
-                  }
-
-              private fun roundButton(text: String): TextView =
-                  tv(text, 26f, Color.WHITE, true).apply {
-                      gravity = Gravity.CENTER
-                      background = bg(cChip, 0, true)
-                      isClickable = true
-                  }
-
-              private fun card(fill: Int): LinearLayout = LinearLayout(this).apply {
-                  orientation = LinearLayout.VERTICAL
-                  background = bg(fill, 24)
-                  setPadding(dp(20), dp(20), dp(20), dp(20))
+              private fun makeBtn(text: String, onClick: () -> Unit): Button = Button(this).apply {
+                  this.text = text
+                  isAllCaps = false
+                  setOnClickListener { onClick() }
               }
 
-              private fun lp(top: Int, h: Int = LinearLayout.LayoutParams.WRAP_CONTENT) =
-                  LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h)
-                      .apply { topMargin = dp(top) }
+              private fun openFirst(vararg intents: Intent) {
+                  for (i in intents) {
+                      try {
+                          startActivity(i)
+                          return
+                      } catch (_: Exception) {
+                      }
+                  }
+              }
+
+              private fun pkgUri(): Uri = Uri.parse("package:$packageName")
 
               private fun buildUi() {
                   val root = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
-                      setPadding(dp(20), dp(28), dp(20), dp(28))
-                      setBackgroundColor(cBg)
+                      gravity = Gravity.CENTER
+                      setPadding(dp(24), dp(24), dp(24), dp(24))
+                      setBackgroundColor(Color.parseColor("#12161C"))
                   }
 
-                  // Đầu trang: tên app + nhãn trạng thái
-                  statusPill = tv("", 12f, Color.WHITE, true).apply {
+                  title = TextView(this).apply {
+                      textSize = 26f
+                      setTextColor(Color.WHITE)
+                      setTypeface(typeface, Typeface.BOLD)
                       gravity = Gravity.CENTER
-                      setPadding(dp(12), dp(6), dp(12), dp(6))
                   }
-                  val header = LinearLayout(this).apply {
-                      orientation = LinearLayout.HORIZONTAL
-                      gravity = Gravity.CENTER_VERTICAL
-                      addView(
-                          tv("Block", 30f, Color.WHITE, true),
-                          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                      )
-                      addView(
-                          statusPill,
-                          LinearLayout.LayoutParams(
-                              LinearLayout.LayoutParams.WRAP_CONTENT,
-                              LinearLayout.LayoutParams.WRAP_CONTENT
-                          )
-                      )
+                  countdown = TextView(this).apply {
+                      textSize = 52f
+                      setTextColor(Color.WHITE)
+                      typeface = Typeface.MONOSPACE
+                      gravity = Gravity.CENTER
                   }
-                  root.addView(header, lp(0))
+                  appsText = TextView(this).apply {
+                      textSize = 15f
+                      setTextColor(Color.parseColor("#7FB2FF"))
+                      gravity = Gravity.CENTER
+                  }
+                  selectBtn = makeBtn("") { showPicker() }
 
-                  // Thẻ đồng hồ
-                  caption = tv("", 12f, cGray, true).apply {
-                      gravity = Gravity.CENTER
-                      letterSpacing = 0.1f
+                  minusBtn = Button(this).apply {
+                      text = "−"
+                      textSize = 24f
+                      setOnClickListener { changeDuration(-1) }
                   }
-                  countdown = tv("", 56f, Color.WHITE).apply {
-                      typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-                      fontFeatureSettings = "tnum"
+                  plusBtn = Button(this).apply {
+                      text = "+"
+                      textSize = 24f
+                      setOnClickListener { changeDuration(+1) }
+                  }
+                  durationLabel = TextView(this).apply {
+                      textSize = 22f
+                      setTextColor(Color.WHITE)
+                      setTypeface(typeface, Typeface.BOLD)
                       gravity = Gravity.CENTER
                   }
-                  minusBtn = roundButton("−").apply { setOnClickListener { changeDuration(-1) } }
-                  plusBtn = roundButton("+").apply { setOnClickListener { changeDuration(+1) } }
-                  durationLabel = tv("", 18f, Color.WHITE, true).apply { gravity = Gravity.CENTER }
                   durationRow = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER_VERTICAL
-                      addView(minusBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
-                      addView(
-                          durationLabel,
-                          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                      )
-                      addView(plusBtn, LinearLayout.LayoutParams(dp(52), dp(52)))
+                      addView(minusBtn, LinearLayout.LayoutParams(dp(72), dp(56)))
+                      addView(durationLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                      addView(plusBtn, LinearLayout.LayoutParams(dp(72), dp(56)))
                   }
-                  val timerCard = card(cCard)
-                  timerCard.addView(caption, lp(0))
-                  timerCard.addView(countdown, lp(4))
-                  timerCard.addView(durationRow, lp(16))
-                  root.addView(timerCard, lp(24))
 
-                  // Thẻ app bị khóa
-                  appsText = tv("", 17f, Color.WHITE, true)
-                  selectBtn = pillButton("", cChip, cBlue, 48).apply {
-                      textSize = 15f
-                      setOnClickListener { showPicker() }
-                  }
-                  val appsCard = card(cCard)
-                  appsCard.addView(
-                      tv("APP BỊ KHÓA", 12f, cGray, true).apply { letterSpacing = 0.1f },
-                      lp(0)
-                  )
-                  appsCard.addView(appsText, lp(8))
-                  appsCard.addView(selectBtn, lp(14, dp(48)))
-                  root.addView(appsCard, lp(14))
-
-                  // Nút khóa
-                  lockBtn = pillButton("", cRed, Color.WHITE, 64).apply {
-                      textSize = 18f
+                  lockBtn = Button(this).apply {
+                      textSize = 20f
+                      setTextColor(Color.WHITE)
+                      setTypeface(typeface, Typeface.BOLD)
+                      isAllCaps = false
                       setOnClickListener { onLockClicked() }
                   }
-                  root.addView(lockBtn, lp(20, dp(64)))
-
-                  hint = tv("", 13f, cGray).apply { gravity = Gravity.CENTER }
-                  root.addView(hint, lp(14))
-          
-                  testBtn = pillButton("Kiểm tra dịch vụ (tự về màn hình chính sau 3 giây)", cChip, cBlue, 44).apply {
-                      textSize = 13f
-                      setOnClickListener { runServiceTest() }
+                  hint = TextView(this).apply {
+                      textSize = 14f
+                      setTextColor(Color.parseColor("#9AA4B2"))
+                      gravity = Gravity.CENTER
                   }
-                  root.addView(testBtn, lp(12, dp(44)))
+                  statusText = TextView(this).apply {
+                      textSize = 12f
+                      setTextColor(Color.parseColor("#6F7A8A"))
+                      gravity = Gravity.CENTER
+                  }
 
-                  // Thẻ hướng dẫn bật quyền (chỉ hiện khi chưa bật)
-                  permBtn = pillButton("Bật quyền Trợ năng", cAmber, Color.parseColor("#1A1306"), 48).apply {
-                      textSize = 15f
-                      setOnClickListener {
-                          startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                  usageBtn = makeBtn("Cấp quyền xem app đang mở (Usage access)") {
+                      openFirst(
+                          Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, pkgUri()),
+                          Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                      )
+                  }
+                  overlayBtn = makeBtn("Cấp quyền hiện trên các app khác") {
+                      openFirst(
+                          Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkgUri()),
+                          Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                      )
+                  }
+                  notifBtn = makeBtn("Cho phép thông báo") {
+                      if (Build.VERSION.SDK_INT >= 33) {
+                          requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 100)
                       }
                   }
-                  infoBtn = pillButton("Công tắc bị mờ? Mở thông tin ứng dụng", cChip, Color.WHITE, 44).apply {
-                      textSize = 13f
-                      setOnClickListener {
-                          startActivity(
-                              Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                  .setData(Uri.parse("package:$packageName"))
-                          )
-                      }
+                  battBtn = makeBtn("Không hạn chế pin cho Khóa App") {
+                      openFirst(
+                          Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkgUri()),
+                          Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                      )
                   }
-                  setupCard = card(cWarnBg)
-                  setupCard.addView(tv("Cần bật quyền Trợ năng", 16f, cAmber, true), lp(0))
-                  setupCard.addView(
-                      tv(
-                          "Block cần quyền này để biết khi bạn mở app bị khóa. Không đọc nội dung màn hình, không thu thập dữ liệu. " +
-                              "Nếu công tắc bị mờ: Thông tin ứng dụng → bật \"Cho phép cài đặt giới hạn\" (hoặc dấu ⋮ → Cho phép cài đặt bị hạn chế).",
-                          13f, cGray
-                      ),
-                      lp(6)
-                  )
-                  setupCard.addView(permBtn, lp(14, dp(48)))
-                  setupCard.addView(infoBtn, lp(8, dp(44)))
-                  root.addView(setupCard, lp(14))
-          
-                  debug = tv("", 11f, cGray).apply { gravity = Gravity.CENTER }
-                  root.addView(debug, lp(20))
+                  accBtn = makeBtn("Bật Trợ năng (lớp chặn 1)") {
+                      startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                  }
+                  infoBtn = makeBtn("Công tắc Trợ năng bị mờ? Mở thông tin ứng dụng") {
+                      openFirst(
+                          Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(pkgUri())
+                      )
+                  }
+
+                  fun lp(top: Int, height: Int = LinearLayout.LayoutParams.WRAP_CONTENT) =
+                      LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
+                          .apply { topMargin = dp(top) }
+
+                  root.addView(title, lp(0))
+                  root.addView(countdown, lp(8))
+                  root.addView(appsText, lp(8))
+                  root.addView(selectBtn, lp(12))
+                  root.addView(durationRow, lp(12))
+                  root.addView(lockBtn, lp(16, dp(100)))
+                  root.addView(hint, lp(16))
+                  root.addView(usageBtn, lp(16))
+                  root.addView(overlayBtn, lp(4))
+                  root.addView(notifBtn, lp(4))
+                  root.addView(battBtn, lp(4))
+                  root.addView(accBtn, lp(4))
+                  root.addView(infoBtn, lp(4))
+                  root.addView(statusText, lp(20))
 
                   val scroll = ScrollView(this).apply {
                       isFillViewport = true
-                      setBackgroundColor(cBg)
+                      setBackgroundColor(Color.parseColor("#12161C"))
                       addView(
                           root,
                           FrameLayout.LayoutParams(
-                              FrameLayout.LayoutParams.MATCH_PARENT,
-                              FrameLayout.LayoutParams.WRAP_CONTENT
+                              ViewGroup.LayoutParams.MATCH_PARENT,
+                              ViewGroup.LayoutParams.WRAP_CONTENT
                           )
                       )
                   }
                   setContentView(scroll)
               }
+
+              // ---------- Kiểm tra quyền ----------
+
+              private fun hasUsageAccess(): Boolean {
+                  val ops = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+                  val mode = ops.checkOpNoThrow(
+                      AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName
+                  )
+                  return mode == AppOpsManager.MODE_ALLOWED
+              }
+
+              private fun hasNotifPermission(): Boolean =
+                  Build.VERSION.SDK_INT < 33 ||
+                      checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                      PackageManager.PERMISSION_GRANTED
+
+              private fun isBatteryUnrestricted(): Boolean {
+                  val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                  return pm.isIgnoringBatteryOptimizations(packageName)
+              }
+
+              private fun isServiceEnabled(): Boolean {
+                  val enabled = Settings.Secure.getString(
+                      contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                  ) ?: return false
+                  val cn = ComponentName(this, LockService::class.java)
+                  val full = cn.flattenToString()
+                  val short = cn.flattenToShortString()
+                  return enabled.split(':').any { it.equals(full, true) || it.equals(short, true) }
+              }
+
+              // ---------- Chọn app ----------
 
               private fun appLabel(pkg: String): String = try {
                   packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
@@ -653,12 +845,14 @@ jobs:
                   pkg
               }
 
+              private fun labelOf(pkg: String): String = labelCache.getOrPut(pkg) { appLabel(pkg) }
+
               /** Tính lại chuỗi tóm tắt app đã chọn (không làm mỗi 500ms cho nhẹ). */
               private fun updateSummary() {
                   val names = LockStore.lockedPackages(this).map { appLabel(it) }.sorted()
                   selectCount = names.size
                   summary = when {
-                      names.isEmpty() -> "Chưa chọn app nào"
+                      names.isEmpty() -> "chưa chọn app nào"
                       names.size <= 3 -> names.joinToString(", ")
                       else -> names.take(3).joinToString(", ") + " và ${names.size - 3} app khác"
                   }
@@ -705,6 +899,8 @@ jobs:
                       .show()
               }
 
+              // ---------- Khóa ----------
+
               private fun changeDuration(delta: Int) {
                   if (LockStore.remainingMs(this) > 0L) return
                   LockStore.setSelectedIndex(this, LockStore.selectedIndex(this) + delta)
@@ -712,9 +908,10 @@ jobs:
               }
 
               private fun onLockClicked() {
-                  if (!isServiceEnabled()) {
-                      Toast.makeText(this, "Hãy bật quyền Trợ năng cho Block trước", Toast.LENGTH_LONG).show()
-                      startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                  val layer1 = isServiceEnabled()
+                  val layer2 = hasUsageAccess() && Settings.canDrawOverlays(this)
+                  if (!layer1 && !layer2) {
+                      Toast.makeText(this, "Hãy bật ít nhất một lớp chặn ở bên dưới trước", Toast.LENGTH_LONG).show()
                       return
                   }
                   if (selectCount == 0) {
@@ -741,96 +938,77 @@ jobs:
 
               private fun doLock(minutes: Long) {
                   LockStore.start(this, minutes)
+                  if (hasUsageAccess()) WatcherService.start(this)
                   refresh()
               }
 
-              private fun formatMs(ms: Long): String {
-                  val s = (ms + 999L) / 1000L
-                  val h = s / 3600L
-                  val m = (s % 3600L) / 60L
-                  val sec = s % 60L
-                  return if (h > 0L) String.format("%d:%02d:%02d", h, m, sec)
-                  else String.format("%02d:%02d", m, sec)
-              }
+              private fun vis(show: Boolean): Int = if (show) View.VISIBLE else View.GONE
 
-              private fun runServiceTest() {
-                  if (LockService.instance == null) {
-                      Toast.makeText(
-                          this,
-                          "Dịch vụ Trợ năng KHÔNG chạy. Vào Cài đặt → Trợ năng, tắt rồi bật lại công tắc Block.",
-                          Toast.LENGTH_LONG
-                      ).show()
-                      return
-                  }
-                  Toast.makeText(this, "Sau 3 giây máy sẽ tự về màn hình chính…", Toast.LENGTH_SHORT).show()
-                  handler.postDelayed({ LockService.goHome() }, 3000L)
-              }
-          
-              private fun setPill(text: String, fill: Int, textColor: Int) {
-                  statusPill.text = text
-                  statusPill.setTextColor(textColor)
-                  statusPill.background = bg(fill, 16)
-              }
+              private fun seenSuffix(pkg: String): String =
+                  if (pkg.isEmpty()) "" else " · vừa thấy: ${labelOf(pkg)}"
 
               private fun refresh() {
                   val remaining = LockStore.remainingMs(this)
-                  val enabled = isServiceEnabled()
+                  val acc = isServiceEnabled()
+                  val usage = hasUsageAccess()
+                  val overlayOk = Settings.canDrawOverlays(this)
+                  val layer2 = usage && overlayOk
+                  val watcherAlive = System.currentTimeMillis() - LockStore.watchAliveAt < 3000L
 
-                  setupCard.visibility = if (enabled) View.GONE else View.VISIBLE
-                  val running = if (LockService.instance != null) "đang chạy" else "KHÔNG chạy"
-                  debug.text = "Chẩn đoán: dịch vụ $running, nhận ${LockService.events} sự kiện\n" +
-                      "App mở gần nhất: ${LockService.lastPkg} → ${LockService.lastNote}"
-                  appsText.text = summary
-                  testBtn.visibility = if (remaining > 0L) View.GONE else View.VISIBLE
+                  // Đang khóa mà dịch vụ giám sát chết thì bật lại (tối đa 5 giây một lần).
+                  if (remaining > 0L && usage && !watcherAlive &&
+                      System.currentTimeMillis() - lastRestart > 5000L
+                  ) {
+                      lastRestart = System.currentTimeMillis()
+                      WatcherService.start(this)
+                  }
+
+                  usageBtn.visibility = vis(!usage)
+                  overlayBtn.visibility = vis(!overlayOk)
+                  notifBtn.visibility = vis(!hasNotifPermission())
+                  battBtn.visibility = vis(!isBatteryUnrestricted())
+                  accBtn.visibility = vis(!acc)
+                  infoBtn.visibility = vis(!acc)
+
+                  appsText.text = "App bị khóa: $summary"
+                  statusText.text =
+                      "Lớp 1 (Trợ năng): " + (if (acc) "bật" else "tắt") + seenSuffix(LockStore.accSeen) + "\n" +
+                          "Lớp 2 (giám sát nền): " +
+                          (if (watcherAlive) "đang chạy" else if (layer2) "sẵn sàng, chạy khi khóa" else "chưa đủ quyền") +
+                          seenSuffix(LockStore.watchSeen)
 
                   if (remaining > 0L) {
-                      setPill("ĐANG KHÓA", cRed, Color.WHITE)
-                      caption.text = "CÒN LẠI"
-                      countdown.text = formatMs(remaining)
+                      title.text = "ĐANG KHÓA"
+                      countdown.text = LockStore.formatMs(remaining)
                       selectBtn.visibility = View.GONE
                       durationRow.visibility = View.GONE
                       lockBtn.isEnabled = false
-                      lockBtn.text = "Đang khóa…"
-                      lockBtn.setTextColor(cGray)
-                      lockBtn.background = bg(cChip, 32)
+                      lockBtn.text = "Đang khóa..."
+                      lockBtn.background = roundedBg(Color.parseColor("#3A4250"))
                       hint.text = "Hết giờ sẽ tự mở khóa. Không có nút dừng."
                   } else {
                       val idx = LockStore.selectedIndex(this)
                       val minutes = LockStore.STEPS_MIN[idx]
-                      if (enabled) setPill("SẴN SÀNG", cGreen, Color.WHITE)
-                      else setPill("CHƯA BẬT TRỢ NĂNG", cChip, cAmber)
-                      caption.text = "THỜI GIAN KHÓA"
-                      countdown.text = formatMs(minutes * 60_000L)
+                      title.text = "Khóa App"
+                      countdown.text = LockStore.formatMs(minutes * 60_000L)
                       selectBtn.visibility = View.VISIBLE
                       selectBtn.text = "Chọn app cần khóa ($selectCount)"
                       durationRow.visibility = View.VISIBLE
                       durationLabel.text = LockStore.label(minutes)
                       minusBtn.isEnabled = idx > 0
-                      minusBtn.alpha = if (idx > 0) 1f else 0.35f
                       plusBtn.isEnabled = idx < LockStore.STEPS_MIN.size - 1
-                      plusBtn.alpha = if (idx < LockStore.STEPS_MIN.size - 1) 1f else 0.35f
                       lockBtn.isEnabled = true
                       lockBtn.text = "KHÓA ${LockStore.label(minutes).uppercase()}"
-                      lockBtn.setTextColor(Color.WHITE)
-                      lockBtn.background = bg(cRed, 32)
-                      hint.text = if (enabled && LockService.instance == null) {
-                          "Dịch vụ Trợ năng chưa chạy. Vào Cài đặt → Trợ năng, tắt rồi bật lại công tắc Block."
-                      } else if (enabled) {
-                          "Chọn app và thời gian, rồi bấm khóa. Lệnh MT5 đang mở vẫn chạy, nhớ đặt SL."
-                      } else {
-                          "Bật quyền Trợ năng ở thẻ bên dưới thì Block mới chặn được."
+                      lockBtn.background = roundedBg(Color.parseColor("#D93636"))
+                      hint.text = when {
+                          acc && layer2 ->
+                              "Chọn app và thời gian, rồi bấm khóa. Lệnh MT5 đang mở vẫn chạy, nhớ đặt SL."
+                          acc || layer2 ->
+                              "Mới bật 1 trong 2 lớp chặn. Cấp thêm các quyền bên dưới để chắc hơn."
+                          else ->
+                              "Chưa bật lớp chặn nào. Hãy cấp các quyền bên dưới."
                       }
                   }
-              }
-
-              private fun isServiceEnabled(): Boolean {
-                  val enabled = Settings.Secure.getString(
-                      contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                  ) ?: return false
-                  val cn = ComponentName(this, LockService::class.java)
-                  val full = cn.flattenToString()
-                  val short = cn.flattenToShortString()
-                  return enabled.split(':').any { it.equals(full, true) || it.equals(short, true) }
               }
           }
           KHOAEOF

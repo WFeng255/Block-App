@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_desc">Chỉ theo dõi việc mở các app bạn đã chọn khóa. Khi đang trong thời gian khóa, dịch vụ này đưa bạn về màn hình chính mỗi lần mở một app trong danh sách. Không đọc nội dung màn hình, không thu thập dữ liệu.</string>
+</resources>

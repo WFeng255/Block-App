@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "KhoaMT5"
+rootProject.name = "Block"
 include(":app")

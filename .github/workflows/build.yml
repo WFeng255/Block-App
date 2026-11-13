@@ -88,6 +88,7 @@ jobs:
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
+                      android:screenOrientation="portrait"
                       android:launchMode="singleTask">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -97,10 +98,12 @@ jobs:
 
                   <activity
                       android:name=".SettingsActivity"
+                      android:screenOrientation="portrait"
                       android:exported="false" />
 
                   <activity
                       android:name=".HistoryActivity"
+                      android:screenOrientation="portrait"
                       android:exported="false" />
 
                   <!-- Lớp chặn 1: Trợ năng -->
@@ -501,74 +504,103 @@ jobs:
           package com.khoamt5.app
 
           import android.accessibilityservice.AccessibilityService
-          import android.content.Intent
+          import android.content.Context
           import android.os.Handler
           import android.os.Looper
           import android.os.SystemClock
+          import android.view.WindowManager
           import android.view.accessibility.AccessibilityEvent
+          import android.view.inputmethod.InputMethodManager
 
           /**
-           * Lớp chặn 1 (Trợ năng): nghe sự kiện đổi cửa sổ. Khi app vừa hiện lên nằm trong danh sách
-           * khóa và đang trong thời gian khóa:
-           *  - Nếu lớp 2 đang chạy (nó hiện màn hình lời nhắc rồi tự đẩy về màn hình chính),
-           *    lớp này chỉ làm dự phòng: sau 8 giây mà vẫn còn ở app đó thì đẩy về màn hình chính.
-           *  - Nếu lớp 2 không chạy thì đẩy về màn hình chính ngay.
+           * Lớp chặn 1 (Trợ năng): nghe sự kiện đổi cửa sổ. Mỗi lần một app trong danh sách khóa
+           * hiện lên (kể cả mở lại sau khi thoát) thì hiện ngay màn hình che (cửa sổ loại trợ năng,
+           * không cần thêm quyền), giữ vài giây cho bạn đọc lời nhắc rồi đẩy về màn hình chính.
            * Không đọc nội dung màn hình (canRetrieveWindowContent = false).
            */
           class LockService : AccessibilityService() {
 
               private val handler = Handler(Looper.getMainLooper())
-              private var lastLaunch = 0L
               private var currentPkg: String? = null
-              private var backup: Runnable? = null
+              private var looping = false
+              private var lastHome = 0L
               private val protectedPkgs by lazy { LockStore.protectedPackages(this) }
+              private val imePkgs by lazy { loadImePackages() }
+
+              private fun loadImePackages(): Set<String> {
+                  return try {
+                      val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                      imm.enabledInputMethodList.map { it.packageName }.toSet()
+                  } catch (_: Exception) {
+                      emptySet()
+                  }
+              }
+
+              private fun isBlocked(pkg: String): Boolean =
+                  pkg in LockStore.lockedPackages(this) && pkg !in protectedPkgs
+
+              private fun home() {
+                  val now = SystemClock.elapsedRealtime()
+                  if (now - lastHome < 800L) return
+                  lastHome = now
+                  performGlobalAction(GLOBAL_ACTION_HOME)
+              }
+
+              private val loop = object : Runnable {
+                  override fun run() {
+                      val pkg = currentPkg
+                      val rem = LockStore.remainingMs(this@LockService)
+                      if (pkg == null || rem <= 0L || !isBlocked(pkg)) {
+                          looping = false
+                          if (BlockOverlay.owner == BlockOverlay.OWNER_ACC) BlockOverlay.hide()
+                          return
+                      }
+                      val ok = BlockOverlay.show(
+                          this@LockService,
+                          WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                          rem,
+                          BlockOverlay.OWNER_ACC
+                      ) { home() }
+                      if (!ok) home()
+                      handler.postDelayed(this, 300L)
+                  }
+              }
 
               override fun onAccessibilityEvent(event: AccessibilityEvent?) {
                   if (event == null) return
                   if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
                   val pkg = event.packageName?.toString() ?: return
 
-                  if (pkg != "com.android.systemui") currentPkg = pkg
-                  if (pkg != packageName && pkg != "com.android.systemui") {
-                      LockStore.accSeen = pkg
+                  // Bỏ qua thanh hệ thống và bàn phím: chúng không phải app người dùng đang ở.
+                  if (pkg == "com.android.systemui" || pkg in imePkgs) return
+
+                  // Cửa sổ che của chính mình cũng báo sự kiện: bỏ qua, chỉ tính các màn hình (Activity) của app.
+                  if (pkg == packageName) {
+                      val cn = event.className?.toString() ?: ""
+                      if (!cn.endsWith("Activity")) return
                   }
 
-                  if (pkg !in LockStore.lockedPackages(this)) return
-                  if (pkg in protectedPkgs) return
-                  if (LockStore.remainingMs(this) <= 0L) return
+                  currentPkg = pkg
+                  if (pkg != packageName) LockStore.accSeen = pkg
 
-                  val layer2Alive = System.currentTimeMillis() - LockStore.watchAliveAt < 2000L &&
-                      Perms.overlay(this)
-                  if (layer2Alive) {
-                      val old = backup
-                      if (old != null) handler.removeCallbacks(old)
-                      val r = Runnable {
-                          if (currentPkg == pkg && LockStore.remainingMs(this) > 0L) {
-                              performGlobalAction(GLOBAL_ACTION_HOME)
-                          }
+                  if (isBlocked(pkg) && LockStore.remainingMs(this) > 0L) {
+                      if (!looping) {
+                          looping = true
+                          handler.post(loop)
                       }
-                      backup = r
-                      handler.postDelayed(r, 8000L)
-                      return
-                  }
-
-                  // Bước chắc chắn: đẩy app ra màn hình chính.
-                  performGlobalAction(GLOBAL_ACTION_HOME)
-
-                  // Thêm: mở màn hình đếm ngược của app (có thể bị hệ thống chặn, không sao).
-                  val now = SystemClock.elapsedRealtime()
-                  if (now - lastLaunch > 1000L) {
-                      lastLaunch = now
-                      try {
-                          val intent = Intent(this, MainActivity::class.java)
-                              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                          startActivity(intent)
-                      } catch (_: Exception) {
-                      }
+                  } else if (BlockOverlay.owner == BlockOverlay.OWNER_ACC) {
+                      BlockOverlay.hide()
                   }
               }
 
               override fun onInterrupt() {}
+
+              override fun onDestroy() {
+                  handler.removeCallbacks(loop)
+                  looping = false
+                  if (BlockOverlay.owner == BlockOverlay.OWNER_ACC) BlockOverlay.hide()
+                  super.onDestroy()
+              }
           }
           KHOAEOF
           mkdir -p app/src/main/java/com/khoamt5/app
@@ -585,25 +617,17 @@ jobs:
           import android.content.Context
           import android.content.Intent
           import android.content.pm.ServiceInfo
-          import android.graphics.Color
-          import android.graphics.PixelFormat
-          import android.graphics.Typeface
           import android.os.Build
           import android.os.Handler
           import android.os.IBinder
           import android.os.Looper
           import android.os.SystemClock
-          import android.provider.Settings
-          import android.view.Gravity
           import android.view.WindowManager
-          import android.widget.FrameLayout
-          import android.widget.LinearLayout
-          import android.widget.TextView
 
           /**
            * Lớp chặn 2: dịch vụ chạy nền (có thông báo cố định nên khó bị hệ thống tắt).
            * Cứ 0,3 giây đọc xem app nào đang ở trên cùng (qua Usage access). Nếu đó là app bị khóa
-           * thì che kín màn hình bằng một lớp phủ đếm ngược và đẩy về màn hình chính.
+           * thì hiện màn hình che (BlockOverlay) rồi đẩy về màn hình chính.
            * Chỉ chạy trong lúc đang khóa, hết giờ tự tắt.
            */
           class WatcherService : Service() {
@@ -615,7 +639,6 @@ jobs:
                   private const val EV_BG = 2          // app xuống nền
                   private const val EV_SCREEN_OFF = 16 // tắt màn hình
                   private const val POLL_MS = 300L
-                  private const val HOLD_MS = 7000L   // giữ màn hình lời nhắc trước khi về màn hình chính
 
                   fun start(c: Context) {
                       try {
@@ -626,12 +649,6 @@ jobs:
               }
 
               private val handler = Handler(Looper.getMainLooper())
-              private var windowManager: WindowManager? = null
-              private var overlay: FrameLayout? = null
-              private var ringView: RingView? = null
-              private var reminderView: TextView? = null
-              private var hintView: TextView? = null
-              private var shownAt = 0L
               private var fgPackage: String? = null
               private var lastEventTs = 0L
               private var lastHome = 0L
@@ -644,7 +661,7 @@ jobs:
                       val remaining = LockStore.remainingMs(this@WatcherService)
                       if (remaining <= 0L) {
                           running = false
-                          removeOverlay()
+                          BlockOverlay.hide()
                           stopForeground(STOP_FOREGROUND_REMOVE)
                           stopSelf()
                           return
@@ -657,9 +674,15 @@ jobs:
                           pkg in LockStore.lockedPackages(this@WatcherService) &&
                           pkg !in protectedPkgs
                       ) {
-                          showOverlay(remaining)
-                      } else {
-                          removeOverlay()
+                          val ok = BlockOverlay.show(
+                              this@WatcherService,
+                              WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                              remaining,
+                              BlockOverlay.OWNER_WATCH
+                          ) { goHome() }
+                          if (!ok) goHome()
+                      } else if (BlockOverlay.owner == BlockOverlay.OWNER_WATCH) {
+                          BlockOverlay.hide()
                       }
                       handler.postDelayed(this, POLL_MS)
                   }
@@ -667,7 +690,6 @@ jobs:
 
               override fun onCreate() {
                   super.onCreate()
-                  windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
                   protectedPkgs = LockStore.protectedPackages(this)
               }
 
@@ -692,7 +714,7 @@ jobs:
               override fun onDestroy() {
                   running = false
                   handler.removeCallbacksAndMessages(null)
-                  removeOverlay()
+                  if (BlockOverlay.owner == BlockOverlay.OWNER_WATCH) BlockOverlay.hide()
                   super.onDestroy()
               }
 
@@ -742,95 +764,6 @@ jobs:
                   if (p != null && p != packageName && p != "com.android.systemui") {
                       LockStore.watchSeen = p
                   }
-              }
-
-              private fun createOverlay() {
-                  val wm = windowManager ?: return
-                  if (!Settings.canDrawOverlays(this)) return
-                  val box = LinearLayout(this)
-                  box.orientation = LinearLayout.VERTICAL
-                  box.gravity = Gravity.CENTER
-                  val pad = Ui.dp(this, 28)
-                  box.setPadding(pad, pad, pad, pad)
-
-                  val tag = Ui.text(this, "ĐANG KHÓA", 14f, Ui.ACCENT, true)
-                  tag.gravity = Gravity.CENTER
-                  tag.letterSpacing = 0.15f
-                  box.addView(tag, Ui.lp(this, 0))
-
-                  val ring = RingView(this)
-                  box.addView(ring, Ui.lp(this, 12, Ui.dp(this, 260), Ui.dp(this, 260)))
-
-                  val reminder = Ui.text(this, "", 22f, Ui.TEXT, true)
-                  reminder.gravity = Gravity.CENTER
-                  box.addView(reminder, Ui.lp(this, 20))
-
-                  val hint = Ui.text(this, "Bấm nút Home để thoát", 14f, Ui.MUTED)
-                  hint.gravity = Gravity.CENTER
-                  box.addView(hint, Ui.lp(this, 20))
-
-                  val lp = WindowManager.LayoutParams(
-                      WindowManager.LayoutParams.MATCH_PARENT,
-                      WindowManager.LayoutParams.MATCH_PARENT,
-                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                      PixelFormat.OPAQUE
-                  )
-                  try {
-                      val frame = FrameLayout(this)
-                      val aurora = AuroraView(this)
-                      aurora.locked = true
-                      frame.addView(aurora, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
-                      frame.addView(box, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
-                      wm.addView(frame, lp)
-                      overlay = frame
-                      ringView = ring
-                      reminderView = reminder
-                      hintView = hint
-                  } catch (_: Exception) {
-                  }
-              }
-
-              private fun showOverlay(remainingMs: Long) {
-                  if (overlay == null) {
-                      createOverlay()
-                      if (overlay == null) {
-                          // Không hiện được lớp phủ (thiếu quyền): đẩy về màn hình chính ngay.
-                          goHome()
-                          return
-                      }
-                      shownAt = SystemClock.elapsedRealtime()
-                  }
-                  val ring = ringView
-                  if (ring != null) {
-                      val total = LockStore.totalMs(this).coerceAtLeast(1L)
-                      ring.ringColor = Ui.CORAL
-                      ring.progress = remainingMs.toFloat() / total.toFloat()
-                      ring.centerText = LockStore.formatMs(remainingMs)
-                      ring.subText = "còn lại"
-                  }
-                  reminderView?.text = LockStore.reminder(this)
-                  val left = HOLD_MS - (SystemClock.elapsedRealtime() - shownAt)
-                  if (left > 0L) {
-                      hintView?.text = "Tự về màn hình chính sau " + ((left + 999L) / 1000L) + " giây"
-                  } else {
-                      hintView?.text = "Đang về màn hình chính…"
-                      goHome()
-                  }
-              }
-
-              private fun removeOverlay() {
-                  val v = overlay ?: return
-                  try {
-                      windowManager?.removeView(v)
-                  } catch (_: Exception) {
-                  }
-                  overlay = null
-                  ringView = null
-                  reminderView = null
-                  hintView = null
               }
 
               private fun goHome() {
@@ -963,11 +896,16 @@ jobs:
               fun applyTheme(a: Activity, v: AuroraView, locked: Boolean) {
                   val top = if (locked) PEACH else MINT
                   v.locked = locked
-                  a.window.statusBarColor = top
                   a.window.navigationBarColor = PAGE_END
               }
 
               fun dp(c: Context, v: Int): Int = (v * c.resources.displayMetrics.density + 0.5f).toInt()
+
+              fun gradientRounded(c: Context, left: Int, right: Int, radiusDp: Int): GradientDrawable {
+                  val g = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(left, right))
+                  g.cornerRadius = dp(c, radiusDp).toFloat()
+                  return g
+              }
 
               fun rounded(c: Context, fill: Int, radiusDp: Int, stroke: Int = 0, strokeDp: Int = 0): GradientDrawable {
                   val g = GradientDrawable()
@@ -980,9 +918,11 @@ jobs:
               /** Nền sáng, biểu tượng thanh trạng thái màu tối. */
               fun setupWindow(a: Activity) {
                   val w = a.window
-                  w.statusBarColor = MINT
+                  w.statusBarColor = Color.TRANSPARENT
                   w.navigationBarColor = PAGE_END
                   w.decorView.systemUiVisibility = w.decorView.systemUiVisibility or
+                      View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                      View.SYSTEM_UI_FLAG_LAYOUT_FULL_SCREEN or
                       View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
                       View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
               }
@@ -1005,7 +945,7 @@ jobs:
               fun card(c: Context): LinearLayout {
                   val l = LinearLayout(c)
                   l.orientation = LinearLayout.VERTICAL
-                  l.background = rounded(c, CARD, 20, BORDER, 1)
+                  l.background = rounded(c, Color.argb(238, 255, 255, 255), 20, BORDER, 1)
                   l.setPadding(dp(c, 16), dp(c, 14), dp(c, 16), dp(c, 14))
                   return l
               }
@@ -1091,7 +1031,9 @@ jobs:
 
               /** Bọc nội dung vào màn hình cuộn được, nền sáng. */
               fun screen(c: Context, content: LinearLayout): FrameLayout {
-                  content.setPadding(dp(c, 20), dp(c, 16), dp(c, 20), dp(c, 28))
+                  val res = c.resources.getIdentifier("status_bar_height", "dimen", "android")
+                  val statusBar = if (res > 0) c.resources.getDimensionPixelSize(res) else dp(c, 24)
+                  content.setPadding(dp(c, 20), dp(c, 12) + statusBar, dp(c, 20), dp(c, 28))
                   val s = ScrollView(c)
                   s.setBackgroundColor(Color.TRANSPARENT)
                   s.isFillViewport = true
@@ -1113,14 +1055,24 @@ jobs:
           import android.graphics.Paint
           import android.graphics.Path
           import android.graphics.Typeface
+          import android.hardware.Sensor
+          import android.hardware.SensorEvent
+          import android.hardware.SensorEventListener
+          import android.hardware.SensorManager
           import android.os.SystemClock
+          import android.view.MotionEvent
           import android.view.View
           import kotlin.math.PI
+          import kotlin.math.abs
+          import kotlin.math.atan2
+          import kotlin.math.hypot
           import kotlin.math.sin
 
           /**
-           * Đồng hồ nước: một vòng tròn kính, bên trong nước có sóng nhẹ.
-           * progress = 1 là đầy nước, hạ dần về 0 theo thời gian còn lại. Số lớn ở giữa.
+           * Đồng hồ nước: một vòng tròn kính, bên trong nước có sóng.
+           * - progress = 1 là đầy nước, hạ dần về 0 theo thời gian còn lại.
+           * - Nghiêng điện thoại thì mặt nước nghiêng theo và sóng lắc.
+           * - Chạm vào thì gợn sóng lan ra. splash() cho nước dâng lên rồi chốt lại.
            */
           class RingView(context: Context) : View(context) {
 
@@ -1157,10 +1109,32 @@ jobs:
               private val outline = Paint(Paint.ANTI_ALIAS_FLAG)
               private val waveBack = Paint(Paint.ANTI_ALIAS_FLAG)
               private val waveFront = Paint(Paint.ANTI_ALIAS_FLAG)
+              private val rippleP = Paint(Paint.ANTI_ALIAS_FLAG)
               private val big = Paint(Paint.ANTI_ALIAS_FLAG)
               private val small = Paint(Paint.ANTI_ALIAS_FLAG)
               private val clip = Path()
               private val wave = Path()
+
+              // Trạng thái chuyển động
+              private var tilt = 0f
+              private var tiltTarget = 0f
+              private var prevTilt = 0f
+              private var impulse = 0f
+              private var boost = 0f
+              private val ripples = ArrayList<FloatArray>()   // x, y, thời điểm bắt đầu
+
+              private var sensorManager: SensorManager? = null
+              private val sensorListener = object : SensorEventListener {
+                  override fun onSensorChanged(e: SensorEvent) {
+                      val ax = e.values[0].toDouble()
+                      val ay = e.values[1].toDouble()
+                      if (hypot(ax, ay) < 2.5) return   // điện thoại nằm phẳng: giữ nguyên
+                      val deg = Math.toDegrees(atan2(ax, ay)).toFloat()
+                      tiltTarget = deg.coerceIn(-55f, 55f)
+                  }
+
+                  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+              }
 
               init {
                   glass.style = Paint.Style.FILL
@@ -1168,12 +1142,52 @@ jobs:
                   outline.style = Paint.Style.STROKE
                   waveBack.style = Paint.Style.FILL
                   waveFront.style = Paint.Style.FILL
+                  rippleP.style = Paint.Style.STROKE
                   big.color = Ui.TEXT
                   big.textAlign = Paint.Align.CENTER
                   big.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
                   small.color = Ui.TEXT
                   small.textAlign = Paint.Align.CENTER
                   small.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+              }
+
+              /** Nước dâng lên rồi chốt lại, kèm sóng mạnh (dùng khi bấm KHÓA). */
+              fun splash() {
+                  impulse = 1.4f
+                  boost = 0.16f
+                  invalidate()
+              }
+
+              override fun onAttachedToWindow() {
+                  super.onAttachedToWindow()
+                  try {
+                      val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+                      val acc = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+                      if (sm != null && acc != null) {
+                          sm.registerListener(sensorListener, acc, SensorManager.SENSOR_DELAY_GAME)
+                          sensorManager = sm
+                      }
+                  } catch (_: Exception) {
+                  }
+              }
+
+              override fun onDetachedFromWindow() {
+                  try {
+                      sensorManager?.unregisterListener(sensorListener)
+                  } catch (_: Exception) {
+                  }
+                  sensorManager = null
+                  super.onDetachedFromWindow()
+              }
+
+              override fun onTouchEvent(event: MotionEvent): Boolean {
+                  if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                      ripples.add(floatArrayOf(event.x, event.y, SystemClock.uptimeMillis().toFloat()))
+                      if (ripples.size > 6) ripples.removeAt(0)
+                      impulse = maxOf(impulse, 0.9f)
+                      invalidate()
+                  }
+                  return true
               }
 
               private fun withAlpha(c: Int, a: Int): Int =
@@ -1187,7 +1201,7 @@ jobs:
                   while (x <= right) {
                       val y = top + amp * sin(2.0 * PI * (x - left) / lambda + phase).toFloat()
                       wave.lineTo(x, y)
-                      x += 6f
+                      x += 8f
                   }
                   wave.lineTo(right, bottom)
                   wave.close()
@@ -1203,29 +1217,58 @@ jobs:
                   val r = minOf(w, h) / 2f - stroke * 2f
                   if (r <= 0f) return
 
+                  // Cập nhật chuyển động
+                  tilt += (tiltTarget - tilt) * 0.12f
+                  val vel = abs(tilt - prevTilt)
+                  prevTilt = tilt
+                  impulse *= 0.96f
+                  boost *= 0.94f
+                  val slosh = (1f + vel * 0.6f + impulse * 2.5f).coerceAtMost(4f)
+
                   // Mặt kính
                   canvas.drawCircle(cx, cy, r, glass)
 
                   // Mực nước
-                  val level = 0.05f + 0.9f * progress.coerceIn(0f, 1f)
+                  val level = (0.05f + 0.9f * progress.coerceIn(0f, 1f) + boost).coerceAtMost(0.97f)
                   val bottom = cy + r
                   val top = bottom - level * 2f * r
                   val t = SystemClock.uptimeMillis()
                   val ph1 = (t % 2600L).toFloat() / 2600f * (2.0 * PI).toFloat()
                   val ph2 = (t % 3900L).toFloat() / 3900f * (2.0 * PI).toFloat() + 1.6f
-                  val amp = r * 0.035f
+                  val amp = r * 0.035f * slosh
                   val lambda = r * 1.6f
 
                   clip.reset()
                   clip.addCircle(cx, cy, r, Path.Direction.CW)
                   canvas.save()
                   canvas.clipPath(clip)
+
+                  // Nước, nghiêng theo điện thoại. Vẽ rộng hơn vòng tròn để xoay không lộ góc trống.
+                  canvas.save()
+                  canvas.rotate(tilt, cx, cy)
                   waveBack.color = withAlpha(ringColor, 80)
-                  buildWave(cx - r, cx + r, top - amp, bottom, amp, lambda * 1.2f, ph2)
+                  buildWave(cx - 2f * r, cx + 2f * r, top - amp, cy + 2f * r, amp, lambda * 1.2f, ph2)
                   canvas.drawPath(wave, waveBack)
                   waveFront.color = withAlpha(ringColor, 130)
-                  buildWave(cx - r, cx + r, top, bottom, amp, lambda, ph1)
+                  buildWave(cx - 2f * r, cx + 2f * r, top, cy + 2f * r, amp, lambda, ph1)
                   canvas.drawPath(wave, waveFront)
+                  canvas.restore()
+
+                  // Gợn sóng khi chạm
+                  rippleP.strokeWidth = stroke * 0.8f
+                  var i = ripples.size - 1
+                  while (i >= 0) {
+                      val rp = ripples[i]
+                      val age = t.toFloat() - rp[2]
+                      if (age > 1200f) {
+                          ripples.removeAt(i)
+                      } else {
+                          val p = age / 1200f
+                          rippleP.color = Color.argb((200f * (1f - p)).toInt(), 255, 255, 255)
+                          canvas.drawCircle(rp[0], rp[1], r * 0.12f + r * 0.8f * p, rippleP)
+                      }
+                      i--
+                  }
                   canvas.restore()
 
                   // Viền
@@ -1280,16 +1323,16 @@ jobs:
               private var shaderRadius = 0f
 
               private val calm = intArrayOf(
-                  Color.parseColor("#5EEAD4"),
-                  Color.parseColor("#A78BFA"),
-                  Color.parseColor("#7DD3FC"),
-                  Color.parseColor("#86EFAC")
+                  Color.parseColor("#1FD1B8"),
+                  Color.parseColor("#8B5CF6"),
+                  Color.parseColor("#38BDF8"),
+                  Color.parseColor("#4ADE80")
               )
               private val hot = intArrayOf(
-                  Color.parseColor("#FF8A65"),
-                  Color.parseColor("#F9A8D4"),
-                  Color.parseColor("#FDBA74"),
-                  Color.parseColor("#C4B5FD")
+                  Color.parseColor("#FF6B4A"),
+                  Color.parseColor("#F472B6"),
+                  Color.parseColor("#FB923C"),
+                  Color.parseColor("#A78BFA")
               )
 
               // Vị trí gốc (tỉ lệ theo chiều rộng/cao), biên độ và chu kỳ trôi của từng mảng.
@@ -1314,7 +1357,7 @@ jobs:
               private fun rebuildShaders(radius: Float) {
                   for (i in 0 until 4) {
                       val c = lerp(calm[i], hot[i], mix)
-                      val center = Color.argb(170, Color.red(c), Color.green(c), Color.blue(c))
+                      val center = Color.argb(225, Color.red(c), Color.green(c), Color.blue(c))
                       val edge = Color.argb(0, Color.red(c), Color.green(c), Color.blue(c))
                       paints[i].shader = RadialGradient(0f, 0f, radius, center, edge, Shader.TileMode.CLAMP)
                   }
@@ -1333,7 +1376,7 @@ jobs:
                       val step = 0.04f
                       mix = if (mix < target) minOf(target, mix + step) else maxOf(target, mix - step)
                   }
-                  val radius = maxOf(w, h) * 0.55f
+                  val radius = maxOf(w, h) * 0.62f
                   if (shaderMix != mix || shaderRadius != radius) rebuildShaders(radius)
 
                   canvas.drawRect(0f, 0f, w, h, base)
@@ -1353,6 +1396,140 @@ jobs:
           }
           KHOAEOF
           mkdir -p app/src/main/java/com/khoamt5/app
+          cat > app/src/main/java/com/khoamt5/app/BlockOverlay.kt <<'KHOAEOF'
+          package com.khoamt5.app
+
+          import android.content.Context
+          import android.graphics.PixelFormat
+          import android.os.SystemClock
+          import android.provider.Settings
+          import android.view.Gravity
+          import android.view.WindowManager
+          import android.widget.FrameLayout
+          import android.widget.LinearLayout
+          import android.widget.TextView
+
+          /**
+           * Màn hình che dùng chung cho cả hai lớp chặn: aurora, đồng hồ nước, lời nhắc.
+           * Chỉ có một cửa sổ tại một thời điểm. Bên nào tạo ra nó (owner) thì bên đó gỡ.
+           * Hiện đủ HOLD_MS thì gọi onTimeUp để đẩy về màn hình chính.
+           */
+          object BlockOverlay {
+              const val OWNER_NONE = 0
+              const val OWNER_ACC = 1
+              const val OWNER_WATCH = 2
+              const val HOLD_MS = 7000L
+
+              var owner: Int = OWNER_NONE
+                  private set
+
+              private var root: FrameLayout? = null
+              private var wm: WindowManager? = null
+              private var ring: RingView? = null
+              private var reminder: TextView? = null
+              private var hint: TextView? = null
+              private var shownAt = 0L
+
+              /** Trả về false nếu không hiện được cửa sổ (khi đó người gọi nên đẩy về màn hình chính ngay). */
+              fun show(ctx: Context, type: Int, remainingMs: Long, who: Int, onTimeUp: () -> Unit): Boolean {
+                  if (root == null) {
+                      if (!create(ctx, type)) return false
+                      owner = who
+                      shownAt = SystemClock.elapsedRealtime()
+                  }
+                  val r = ring
+                  if (r != null) {
+                      val total = LockStore.totalMs(ctx).coerceAtLeast(1L)
+                      r.ringColor = Ui.CORAL
+                      r.progress = remainingMs.toFloat() / total.toFloat()
+                      r.centerText = LockStore.formatMs(remainingMs)
+                      r.subText = "còn lại"
+                  }
+                  reminder?.text = LockStore.reminder(ctx)
+                  val left = HOLD_MS - (SystemClock.elapsedRealtime() - shownAt)
+                  if (left > 0L) {
+                      hint?.text = "Tự về màn hình chính sau " + ((left + 999L) / 1000L) + " giây"
+                  } else {
+                      hint?.text = "Đang về màn hình chính…"
+                      onTimeUp()
+                  }
+                  return true
+              }
+
+              fun hide() {
+                  val v = root
+                  if (v != null) {
+                      try {
+                          wm?.removeView(v)
+                      } catch (_: Exception) {
+                      }
+                  }
+                  root = null
+                  wm = null
+                  ring = null
+                  reminder = null
+                  hint = null
+                  owner = OWNER_NONE
+              }
+
+              private fun create(ctx: Context, type: Int): Boolean {
+                  if (type == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY &&
+                      !Settings.canDrawOverlays(ctx)
+                  ) return false
+                  val manager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
+
+                  val box = LinearLayout(ctx)
+                  box.orientation = LinearLayout.VERTICAL
+                  box.gravity = Gravity.CENTER
+                  val pad = Ui.dp(ctx, 28)
+                  box.setPadding(pad, pad, pad, pad)
+
+                  val tag = Ui.text(ctx, "ĐANG KHÓA", 14f, Ui.ACCENT, true)
+                  tag.gravity = Gravity.CENTER
+                  tag.letterSpacing = 0.15f
+                  box.addView(tag, Ui.lp(ctx, 0))
+
+                  val ringView = RingView(ctx)
+                  box.addView(ringView, Ui.lp(ctx, 12, Ui.dp(ctx, 260), Ui.dp(ctx, 260)))
+
+                  val rem = Ui.text(ctx, "", 22f, Ui.TEXT, true)
+                  rem.gravity = Gravity.CENTER
+                  box.addView(rem, Ui.lp(ctx, 20))
+
+                  val h = Ui.text(ctx, "Bấm nút Home để thoát", 14f, Ui.TEXT)
+                  h.gravity = Gravity.CENTER
+                  box.addView(h, Ui.lp(ctx, 20))
+
+                  val frame = FrameLayout(ctx)
+                  val aurora = AuroraView(ctx)
+                  aurora.locked = true
+                  frame.addView(aurora, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+                  frame.addView(box, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+
+                  val lp = WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      WindowManager.LayoutParams.MATCH_PARENT,
+                      type,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                      PixelFormat.OPAQUE
+                  )
+                  try {
+                      manager.addView(frame, lp)
+                  } catch (_: Exception) {
+                      return false
+                  }
+                  root = frame
+                  wm = manager
+                  ring = ringView
+                  reminder = rem
+                  hint = h
+                  return true
+              }
+          }
+          KHOAEOF
+          mkdir -p app/src/main/java/com/khoamt5/app
           cat > app/src/main/java/com/khoamt5/app/MainActivity.kt <<'KHOAEOF'
           package com.khoamt5.app
 
@@ -1365,6 +1542,7 @@ jobs:
           import android.os.Handler
           import android.os.Looper
           import android.view.Gravity
+          import android.view.HapticFeedbackConstants
           import android.view.View
           import android.widget.LinearLayout
           import android.widget.ScrollView
@@ -1631,7 +1809,7 @@ jobs:
                           lockBtn.background = Ui.rounded(this, Ui.TRACK, 14)
                           lockBtn.setTextColor(Ui.MUTED)
                       } else {
-                          lockBtn.background = Ui.rounded(this, Ui.ACCENT, 14)
+                          lockBtn.background = Ui.gradientRounded(this, Ui.CORAL, Color.parseColor("#FF3D71"), 14)
                           lockBtn.setTextColor(Color.WHITE)
                       }
                   }
@@ -1836,6 +2014,8 @@ jobs:
                   LockStore.start(this, minutes)
                   LockStore.addLog(this, minutes, appsSummary())
                   if (Perms.usage(this)) WatcherService.start(this)
+                  ring.splash()
+                  lockBtn.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                   refresh()
               }
           }

@@ -28,8 +28,6 @@ class MainActivity : Activity() {
     private lateinit var prefs: SharedPreferences
     private val entries = mutableListOf<Entry>()
     private val ui = Handler(Looper.getMainLooper())
-    private val red = Color.parseColor("#B71C1C")
-    private val gold = Color.parseColor("#FFD54F")
 
     private lateinit var tvMonth: TextView
     private lateinit var tvMoney: TextView
@@ -66,42 +64,93 @@ class MainActivity : Activity() {
     override fun onResume() { super.onResume(); ui.post(tick) }
     override fun onPause() { super.onPause(); ui.removeCallbacks(tick) }
 
+    // ---- Design tokens ----
+    private val cRed = Color.parseColor("#B3261E")
+    private val cRedDark = Color.parseColor("#7F1410")
+    private val cGold = Color.parseColor("#F2C14E")
+    private val cBg = Color.parseColor("#FBF6EC")
+    private val cText = Color.parseColor("#2B2118")
+    private val cSub = Color.parseColor("#7A6E62")
+    private val cLine = Color.parseColor("#EADFCB")
+    private val cSlate = Color.parseColor("#3E4A52")
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun buildUi() {
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#FFF8E1")) }
+    private fun shape(fill: Int, radius: Int, stroke: Int = 0) = android.graphics.drawable.GradientDrawable().apply {
+        setColor(fill); cornerRadius = dp(radius).toFloat()
+        if (stroke != 0) setStroke(dp(1), stroke)
+    }
 
+    private fun card(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = shape(Color.WHITE, 20, cLine)
+        elevation = dp(2).toFloat()
+        setPadding(dp(16), dp(16), dp(16), dp(16))
+    }
+
+    private fun pill(text: String, fill: Int, textColor: Int, stroke: Int = 0, onClick: () -> Unit) = Button(this).apply {
+        this.text = text; isAllCaps = false; textSize = 15f
+        setTextColor(textColor); typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        background = shape(fill, 24, stroke)
+        stateListAnimator = null
+        minHeight = dp(48); minimumHeight = dp(48)
+        setOnClickListener { onClick() }
+    }
+
+    private fun buildUi() {
+        window.statusBarColor = cRedDark
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg) }
+
+        // Header
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(red)
-            setPadding(dp(20), dp(36), dp(20), dp(20))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(cRedDark, cRed)
+            ).apply { cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, dp(28).toFloat(), dp(28).toFloat(), dp(28).toFloat(), dp(28).toFloat()) }
+            setPadding(dp(24), dp(40), dp(24), dp(40))
         }
-        head.addView(TextView(this).apply { text = "招財工時簿"; setTextColor(gold); textSize = 14f })
-        tvMonth = TextView(this).apply { setTextColor(Color.WHITE); textSize = 15f }
-        tvMoney = TextView(this).apply { setTextColor(gold); textSize = 34f; typeface = Typeface.DEFAULT_BOLD }
+        head.addView(TextView(this).apply {
+            text = "招財工時簿"; setTextColor(cGold); textSize = 16f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL); letterSpacing = 0.12f
+        })
+        tvMoney = TextView(this).apply {
+            setTextColor(Color.WHITE); textSize = 40f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        tvMonth = TextView(this).apply { setTextColor(Color.parseColor("#F5D9D6")); textSize = 14f }
         head.addView(tvMoney); head.addView(tvMonth)
         root.addView(head)
 
-        val clock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(16), dp(16), dp(16), dp(8)) }
-        tvTimer = TextView(this).apply { textSize = 40f; typeface = Typeface.MONOSPACE; setTextColor(Color.DKGRAY); gravity = Gravity.CENTER }
-        etNote = EditText(this).apply { hint = "備註(選填)"; setSingleLine() }
-        btnClock = Button(this).apply {
-            setTextColor(Color.WHITE); textSize = 18f
-            setOnClickListener { toggle() }
+        // Clock card (overlaps header)
+        val clock = card().apply { gravity = Gravity.CENTER_HORIZONTAL }
+        tvTimer = TextView(this).apply {
+            textSize = 44f; typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            setTextColor(cText); gravity = Gravity.CENTER; letterSpacing = 0.04f
         }
-        clock.addView(tvTimer); clock.addView(etNote, LinearLayout.LayoutParams(-1, -2))
+        etNote = EditText(this).apply {
+            hint = "備註(選填)"; setSingleLine(); textSize = 15f
+            setTextColor(cText); setHintTextColor(cSub)
+            background = shape(cBg, 14, cLine)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+        btnClock = pill("", cRed, Color.WHITE) { toggle() }.apply { textSize = 18f }
+        clock.addView(tvTimer)
+        clock.addView(etNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(16) })
         clock.addView(btnClock, LinearLayout.LayoutParams(-1, dp(56)))
-        root.addView(clock)
+        root.addView(clock, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(16), dp(-24), dp(16), 0) })
 
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), 0, dp(12), 0) }
-        fun small(t: String, a: () -> Unit) = Button(this).apply { text = t; setOnClickListener { a() } }
-        bar.addView(small("＋補登") { addManual() }, LinearLayout.LayoutParams(0, -2, 1f))
-        bar.addView(small("時薪") { editRate() }, LinearLayout.LayoutParams(0, -2, 1f))
-        bar.addView(small("分享") { share() }, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(bar)
+        // Secondary actions
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun small(t: String, a: () -> Unit) = pill(t, Color.TRANSPARENT, cRed, cRed, a)
+        val lp = { LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) } }
+        bar.addView(small("＋ 補登") { addManual() }, lp())
+        bar.addView(small("時薪") { editRate() }, lp())
+        bar.addView(small("分享") { share() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        root.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { setMargins(dp(16), dp(16), dp(16), dp(8)) })
 
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(24)) }
-        root.addView(ScrollView(this).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(ScrollView(this).apply { addView(list); isVerticalScrollBarEnabled = false }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
     }
 
@@ -176,7 +225,7 @@ class MainActivity : Activity() {
     private fun refresh() {
         val on = running != 0L
         btnClock.text = if (on) "下班打卡" else "上班打卡"
-        btnClock.setBackgroundColor(if (on) Color.parseColor("#455A64") else red)
+        btnClock.background = shape(if (on) cSlate else cRed, 24)
         val mh = monthEntries().sumOf { it.hours }
         tvMoney.text = "NT$ %,.0f".format(mh * rate)
         tvMonth.text = "本月 %.2f 小時 ・ 時薪 %s".format(mh, rate.toString().removeSuffix(".0"))
@@ -184,13 +233,25 @@ class MainActivity : Activity() {
 
         list.removeAllViews()
         if (entries.isEmpty()) {
-            list.addView(TextView(this).apply { text = "還沒有紀錄,按「上班打卡」開始!"; setPadding(0, dp(24), 0, 0); gravity = Gravity.CENTER })
+            list.addView(TextView(this).apply {
+                text = "還沒有紀錄\n按「上班打卡」開始累積財運"
+                setTextColor(cSub); textSize = 15f; gravity = Gravity.CENTER
+                setLineSpacing(0f, 1.3f); setPadding(0, dp(40), 0, 0)
+            })
+        } else {
+            list.addView(TextView(this).apply {
+                text = "最近紀錄"; setTextColor(cSub); textSize = 13f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setPadding(dp(4), 0, 0, dp(4))
+            })
         }
+        val dayNum = SimpleDateFormat("dd", Locale.TAIWAN)
+        val dayWk = SimpleDateFormat("E", Locale.TAIWAN)
         entries.sortedByDescending { it.start }.forEach { e ->
             val row = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(Color.WHITE)
-                setPadding(dp(14), dp(10), dp(14), dp(10))
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                background = shape(Color.WHITE, 16, cLine)
+                setPadding(dp(12), dp(12), dp(16), dp(12))
                 setOnLongClickListener {
                     AlertDialog.Builder(this@MainActivity).setMessage("刪除這筆紀錄?")
                         .setPositiveButton("刪除") { _, _ -> entries.remove(e); save(); refresh() }
@@ -198,14 +259,32 @@ class MainActivity : Activity() {
                     true
                 }
             }
-            row.addView(TextView(this).apply {
-                text = "${dayFmt.format(e.start)}  ${timeFmt.format(e.start)}–${timeFmt.format(e.end)}"
-                textSize = 15f; setTextColor(Color.BLACK)
+            val date = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                background = shape(Color.parseColor("#FDECEA"), 12)
+            }
+            date.addView(TextView(this).apply {
+                text = dayNum.format(e.start); textSize = 20f; setTextColor(cRed)
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD); gravity = Gravity.CENTER
             })
-            row.addView(TextView(this).apply {
-                text = "%.2f 小時 ・ NT$%,.0f".format(e.hours, e.hours * rate) + if (e.note.isNotEmpty()) "\n${e.note}" else ""
-                setTextColor(Color.GRAY)
+            date.addView(TextView(this).apply { text = dayWk.format(e.start); textSize = 12f; setTextColor(cSub); gravity = Gravity.CENTER })
+            row.addView(date, LinearLayout.LayoutParams(dp(52), dp(52)))
+
+            val mid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(8), 0) }
+            mid.addView(TextView(this).apply {
+                text = "${timeFmt.format(e.start)} – ${timeFmt.format(e.end)}"
+                textSize = 16f; setTextColor(cText)
             })
+            if (e.note.isNotEmpty()) mid.addView(TextView(this).apply { text = e.note; textSize = 13f; setTextColor(cSub); maxLines = 2 })
+            row.addView(mid, LinearLayout.LayoutParams(0, -2, 1f))
+
+            val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
+            right.addView(TextView(this).apply {
+                text = "NT$%,.0f".format(e.hours * rate); textSize = 16f; setTextColor(cRed)
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+            right.addView(TextView(this).apply { text = "%.2f 小時".format(e.hours); textSize = 13f; setTextColor(cSub) })
+            row.addView(right)
             list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         }
     }

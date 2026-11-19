@@ -49,20 +49,15 @@ class MainActivity : Activity() {
             loadUrl("file:///android_asset/so-gio-cong.html")
         }
         setContentView(web)
-        applyTheme()
+        bars((resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES)
     }
 
-    // Follow the system dark mode for the system bars, matching the app's own theme.
-    private fun applyTheme() {
-        val dark = (resources.configuration.uiMode and
-            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
+    private fun bars(dark: Boolean) {
         val c = Color.parseColor(if (dark) "#0E1920" else "#F2F5F7")
         window.statusBarColor = c; window.navigationBarColor = c
         web.setBackgroundColor(c)
-        var f = View.SYSTEM_UI_FLAG_VISIBLE
-        if (!dark) f = f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-        window.decorView.systemUiVisibility = f
+        window.decorView.systemUiVisibility = if (dark) View.SYSTEM_UI_FLAG_VISIBLE else
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
     }
 
     @Deprecated("Deprecated in Java")
@@ -74,6 +69,9 @@ class MainActivity : Activity() {
     }
 
     inner class Bridge {
+        @JavascriptInterface
+        fun setTheme(dark: Boolean) { runOnUiThread { bars(dark) } }
+
         @JavascriptInterface
         fun share(text: String) {
             runOnUiThread {

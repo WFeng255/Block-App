@@ -510,6 +510,9 @@ function renderSettings(){
   h+='<h2>薪資期間</h2><div class="btns" style="flex-direction:column">'
     +'<button class="opt" data-act="cycle" data-v="A" aria-pressed="'+(s.cycle==='A')+'"><span class="dot"></span><span><b>26 日 → 隔月 25 日</b><br><span class="muted small">例：10 月期為 9/26 至 10/25</span></span></button>'
     +'<button class="opt" data-act="cycle" data-v="B" aria-pressed="'+(s.cycle==='B')+'"><span class="dot"></span><span><b>1 日 → 月底</b><br><span class="muted small">例：10 月期為 10/1 至 10/31</span></span></button></div>';
+  h+='<h2>外觀</h2><div class="card"><div class="seg" role="group" aria-label="外觀" style="display:flex">'
+    +[['auto','自動'],['light','淺色'],['dark','深色']].map(function(t){return '<button data-act="theme" data-v="'+t[0]+'" aria-pressed="'+(getTheme()===t[0])+'" style="flex:1">'+t[1]+'</button>';}).join('')
+    +'</div><p class="muted small" style="margin:8px 0 0">自動＝跟隨手機的深色模式。</p></div>';
   h+='<h2>備份資料</h2><div class="card"><p class="muted small" style="margin:0 0 10px">資料存在這台裝置的瀏覽器裡。換手機、清除瀏覽器資料或換瀏覽器都會遺失，建議每期發薪後備份一次。</p>';
   h+='<div class="btns">';
   if(cap.db&&cap.uid)h+='<button class="btn primary" data-act="cloudsave">備份到帳號</button><button class="btn" data-act="cloudload">從帳號還原</button>';
@@ -656,6 +659,7 @@ document.addEventListener('click',async function(ev){
     case 'prev':view=(function(){var n=new Date(view.y,view.m-1,1);return {y:n.getFullYear(),m:n.getMonth()};})();selected={};render();break;
     case 'next':view=(function(){var n=new Date(view.y,view.m+1,1);return {y:n.getFullYear(),m:n.getMonth()};})();selected={};render();break;
     case 'today':view=endMonthFor(state.settings.cycle,new Date());render();break;
+    case 'theme':setTheme(v);render();break;
     case 'eye':state.settings.hide=!state.settings.hide;save();render();break;
     case 'cycle':
       if(state.settings.cycle!==v){
@@ -736,6 +740,17 @@ useCap('db',function(d){cap.db=d;if(tab==='settings')renderSettings();});
 useCap('downloads',function(d){cap.dl=d;if(tab==='settings')renderSettings();});
 
 if(standalone&&'serviceWorker' in navigator&&location.protocol!=='file:'){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
+function getTheme(){try{var t=localStorage.getItem('so-gio-cong.theme');return t==='light'||t==='dark'?t:'auto';}catch(e){return 'auto';}}
+function isDark(){var t=getTheme();return t==='dark'||(t==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);}
+function applyTheme(){
+  var t=getTheme(),r=document.documentElement;
+  if(t==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',t);
+  var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',isDark()?'#0e1920':'#f2f5f7');
+  try{if(window.Android&&Android.setTheme)Android.setTheme(isDark());}catch(e){}
+}
+function setTheme(t){try{localStorage.setItem('so-gio-cong.theme',t);}catch(e){}applyTheme();}
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);}catch(e){}
+applyTheme();
 render();
 })();
 </script>

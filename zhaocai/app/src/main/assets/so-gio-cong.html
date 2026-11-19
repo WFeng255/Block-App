@@ -504,7 +504,7 @@ function openSheet(keys){
   var first=state.days[keys[0]];
   var d0=keyToDate(keys[0]);
   var single=keys.length===1;
-  sheet={keys:keys,t:'n',h:(single&&first&&first.h>0)?first.h:8,n:(single&&first&&first.n)?first.n:''};
+  sheet={keys:keys,t:'n',h:(single&&first&&first.h>0)?first.h:0,n:(single&&first&&first.n)?first.n:''};
   paintSheet();
   $ov.className='show';
 }
@@ -519,10 +519,10 @@ function paintSheet(){
   var n=sheet.keys.length,title;
   if(n===1){var d=keyToDate(sheet.keys[0]);title=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+WD[d.getDay()];}
   else title='一次輸入 '+n+' 天';
-  var chips=[4,6,8,9,10,12].map(function(v){return '<button class="chip" data-act="chiph" data-v="'+v+'" aria-pressed="'+(sheet.h===v)+'">'+v+'h</button>';}).join('');
+  var chips=[1,1.5,2,2.5,3,3.5,4,4.5,5,6,7,8,9,10,12].map(function(v){return '<button class="chip" data-act="chiph" data-v="'+v+'" aria-pressed="'+(sheet.h===v)+'">'+v+'h</button>';}).join('');
   var hasAny=sheet.keys.some(function(k){return state.days[k];});
   var h='<div class="sheet" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><h3>'+esc(title)+'</h3>'
-    +'<div class="field"><label for="shh">工時（小時）</label><div class="stepper"><button data-act="hminus" aria-label="減少半小時">−</button><input type="text" inputmode="decimal" id="shh" value="'+esc(String(sheet.h))+'" autocomplete="off"><button data-act="hplus" aria-label="增加半小時">+</button></div><div class="chips" id="chips">'+chips+'</div></div>'
+    +'<div class="field"><label for="shh">工時（小時）</label><div class="stepper"><button data-act="hminus" aria-label="減少半小時">−</button><input type="text" inputmode="decimal" id="shh" value="'+(sheet.h>0?esc(String(sheet.h)):'')+'" placeholder="0" autocomplete="off"><button data-act="hplus" aria-label="增加半小時">+</button></div><div class="chips" id="chips">'+chips+'</div></div>'
     +(n===1?'<div class="field"><label for="shn">備註</label><input type="text" id="shn" value="'+esc(sheet.n)+'" placeholder="例如：夜班、臨時加班" autocomplete="off"></div>':'')
     +'<div class="preview" id="prev">'+previewHtml()+'</div>'
     +'<div class="btns" style="margin-top:14px"><button class="btn primary" data-act="ssave" style="flex:1">儲存</button>'

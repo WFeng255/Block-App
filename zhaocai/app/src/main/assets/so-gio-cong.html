@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>招財工時簿</title>
+<style>
+:root{--bg:#0e1923;--card:#15232f;--line:#1f3140;--cell:#142330;--teal:#3fc3cf;--tealD:#2aa7b4;--text:#f2f6f8;--mut:#8b9aa6;--gold:#f2c14e;--red:#e5534b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+body{padding:0 16px calc(84px + env(safe-area-inset-bottom));min-height:100vh;user-select:none}
+.hide{display:none!important}
+header{display:flex;align-items:center;justify-content:space-between;padding-top:20px;min-height:128px}
+.brand{display:flex;align-items:center;gap:10px;font-size:26px;font-weight:800}
+.coin{width:26px;height:26px;border-radius:50%;background:var(--gold);display:grid;place-items:center}
+.coin i{width:10px;height:10px;background:var(--bg);border-radius:2px;display:block}
+.sub{color:var(--mut);font-size:15px;margin-top:8px}
+.cat{width:92px;height:108px;margin-right:12px;align-self:flex-end;margin-bottom:-26px;z-index:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px}
+.period{display:flex;align-items:center;justify-content:space-between;padding:14px 8px;text-align:center}
+.period b{font-size:30px;font-weight:700;letter-spacing:.5px}
+.period small{display:block;color:var(--mut);font-size:15px;margin-top:4px}
+.arrow{width:48px;height:48px;border:0;background:none;color:var(--teal);font-size:26px}
+.sum{margin-top:16px;border-radius:22px;background:linear-gradient(135deg,#43c7d2,#38b6c4);color:#06323a;display:flex;padding:18px 20px;position:relative;overflow:hidden}
+.sum:after{content:"";position:absolute;right:-30px;bottom:-50px;width:150px;height:150px;border-radius:50%;border:16px solid rgba(255,255,255,.14)}
+.sum div{flex:1;z-index:1}
+.sum span{font-size:15px;opacity:.85;display:flex;align-items:center;gap:6px}
+.sum b{display:block;font-size:38px;margin-top:6px;font-weight:700;color:#052e36}
+.sum b small{font-size:15px;margin-right:2px}
+.eye{background:none;border:0;padding:0;color:#06323a;display:grid;place-items:center}
+.row{display:flex;align-items:center;justify-content:space-between;margin:16px 0}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:5px}
+.seg button{border:0;background:none;color:var(--mut);font-size:16px;font-weight:700;padding:10px 16px;border-radius:14px}
+.seg button.on{background:var(--teal);color:#06323a}
+.ghost{background:var(--card);border:1px solid var(--line);color:var(--text);font-size:16px;font-weight:700;border-radius:16px;padding:14px 18px}
+.ghost.on{background:var(--teal);color:#06323a;border-color:var(--teal)}
+.wk,.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.wk{margin:20px 0 10px;text-align:center;color:var(--mut);font-weight:700;font-size:16px}
+.day{aspect-ratio:1/1.08;border-radius:16px;background:var(--cell);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:8px;font-size:20px;color:var(--text);position:relative}
+.day em{font-style:normal;font-size:13px;color:var(--teal);font-weight:700;margin-top:4px}
+.day.today span{background:#fff;color:#0e1923;border-radius:10px;padding:0 8px;font-weight:700}
+.day.has{border-color:#2b6b74;background:#10303a}
+.day.sel{outline:2px solid var(--teal);background:#16424b}
+.blank{visibility:hidden}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#101d28;border-top:1px solid var(--line);padding:10px 0 calc(10px + env(safe-area-inset-bottom));z-index:5}
+nav button{flex:1;background:none;border:0;color:var(--mut);font-size:15px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:6px}
+nav button.on{color:var(--teal)}
+nav svg{width:30px;height:30px}
+.bar{position:fixed;left:16px;right:16px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:6;display:flex;gap:10px}
+.bar button{flex:1}
+.pri{background:var(--teal);color:#06323a;border:0;font-size:17px;font-weight:800;border-radius:16px;padding:16px}
+.sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;display:flex;align-items:flex-end}
+.sheet{width:100%;background:var(--card);border-radius:26px 26px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.sheet h3{margin:0 0 14px;font-size:20px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.chips button{background:var(--cell);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:10px 16px;font-size:16px;font-weight:700}
+.chips button.on{background:var(--teal);color:#06323a}
+input,textarea{width:100%;background:var(--cell);border:1px solid var(--line);border-radius:14px;color:var(--text);font-size:20px;padding:14px;margin-top:6px;user-select:text;outline:none}
+input:focus,textarea:focus{border-color:var(--teal)}
+label{color:var(--mut);font-size:14px;display:block;margin-top:12px}
+.btns{display:flex;gap:10px;margin-top:18px}
+.btns button{flex:1;padding:15px;border-radius:16px;font-size:17px;font-weight:800;border:0}
+.del{background:#3a2226;color:#ff8c85}
+.stat{padding:16px;margin-top:12px}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.kv div{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px}
+.kv span{color:var(--mut);font-size:14px}.kv b{display:block;font-size:26px;margin-top:4px}
+.chart{display:flex;align-items:flex-end;gap:6px;height:140px;margin-top:14px;overflow-x:auto;padding-bottom:4px}
+.chart i{flex:0 0 auto;min-width:14px;width:14px;background:var(--teal);border-radius:6px 6px 2px 2px;opacity:.9}
+.chart.big i{width:auto;flex:1;min-width:36px}
+.lbl{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:36px;font-size:12px;color:var(--mut);height:100%;justify-content:flex-end}
+h2{font-size:22px;margin:22px 0 4px}
+.set{padding:6px 16px;margin-top:14px}
+.set .r{padding:14px 0;border-bottom:1px solid var(--line)}
+.set .r:last-child{border:0}
+.toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);background:#fff;color:#0e1923;padding:10px 18px;border-radius:20px;font-weight:700;z-index:30}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<nav>
+ <button data-t="log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>記工時</button>
+ <button data-t="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 20V11M12 20V5M18 20v-6"/></svg>統計</button>
+ <button data-t="set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>設定</button>
+</nav>
+<script>
+const KEY='zcgs.v1';
+let S={rate:200,defH:8,mode:'26',hide:false,data:{}};
+try{Object.assign(S,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const today=new Date();
+let tab='log',multi=false,sel=new Set(),cur=initCursor();
+function initCursor(){let y=today.getFullYear(),m=today.getMonth()+1;if(S.mode==='26'&&today.getDate()>=26){m++;if(m>12){m=1;y++}}return{y,m}}
+function range(c){let s,e;if(S.mode==='26'){s=new Date(c.y,c.m-2,26);e=new Date(c.y,c.m-1,25)}else{s=new Date(c.y,c.m-1,1);e=new Date(c.y,c.m,0)}return{s,e}}
+function days(c){const{s,e}=range(c),a=[];for(let d=new Date(s);d<=e;d.setDate(d.getDate()+1))a.push(new Date(d));return a}
+function totals(c){let h=0,n=0;days(c).forEach(d=>{const r=S.data[iso(d)];if(r&&r.h>0){h+=r.h;n++}});return{h,n}}
+const fmt=n=>(Math.round(n*100)/100).toString();
+const money=n=>Math.round(n).toLocaleString('en-US');
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),1600)}
+function shiftP(k){cur.m+=k;if(cur.m>12){cur.m=1;cur.y++}if(cur.m<1){cur.m=12;cur.y--}sel.clear();render()}
+
+const CAT=`<svg class="cat" viewBox="0 0 92 108"><path d="M20 38 L24 14 L40 28Z M72 38 L68 14 L52 28Z" fill="#fff"/><path d="M25 22 L28 18 L34 26Z M67 22 L64 18 L58 26Z" fill="#f6b7c0"/><ellipse cx="46" cy="46" rx="30" ry="25" fill="#fff"/><path d="M33 44q4-5 8 0M51 44q4-5 8 0" stroke="#3b2a2a" stroke-width="2.4" fill="none" stroke-linecap="round"/><ellipse cx="32" cy="52" rx="6" ry="4" fill="#f6b7c0"/><ellipse cx="60" cy="52" rx="6" ry="4" fill="#f6b7c0"/><path d="M42 52q4 4 8 0" stroke="#3b2a2a" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M22 68q24 12 48 0l-2 10q-22 10-44 0z" fill="#d83a35"/><circle cx="46" cy="80" r="5" fill="#f2c14e"/><path d="M26 74q-4 28 20 34q24-6 20-34z" fill="#fff"/><rect x="34" y="82" width="24" height="24" rx="8" fill="#f2c14e"/><text x="46" y="100" font-size="15" font-weight="900" fill="#c62828" text-anchor="middle">福</text><path d="M70 56q14-14 14 8q0 14-10 14" fill="#fff" stroke="#e8e8e8" stroke-width="1"/></svg>`;
+const EYE=`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+
+function render(){
+ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+ const a=document.getElementById('app');
+ a.innerHTML=tab==='log'?vLog():tab==='stats'?vStats():vSet();
+ bind();
+}
+function vLog(){
+ const{s,e}=range(cur),t=totals(cur),ds=days(cur);
+ const md=d=>(d.getMonth()+1)+'/'+d.getDate();
+ let cells='<div class="blank"></div>'.repeat(ds[0].getDay());
+ ds.forEach(d=>{const k=iso(d),r=S.data[k],isT=iso(today)===k;
+  cells+=`<button class="day${isT?' today':''}${r&&r.h>0?' has':''}${sel.has(k)?' sel':''}" data-d="${k}"><span>${d.getDate()}</span>${r&&r.h>0?`<em>${fmt(r.h)}h</em>`:''}</button>`});
+ return `<header><div><div class="brand"><span class="coin"><i></i></span>招財工時簿</div><div class="sub">每一小時都算數</div></div>${CAT}</header>
+ <div class="card period"><button class="arrow" data-a="prev">‹</button><div><b>${md(s)} – ${md(e)}</b><small>${cur.y}年${cur.m}月薪資期</small></div><button class="arrow" data-a="next">›</button></div>
+ <div class="sum"><div><span>總工時</span><b>${fmt(t.h)}</b></div><div><span>出勤天數</span><b>${t.n}</b></div><div><span>預估薪資 <button class="eye" data-a="eye">${EYE}</button></span><b><small>NT$</small>${S.hide?'••••':money(t.h*S.rate)}</b></div></div>
+ <div class="row"><div class="seg"><button data-m="26" class="${S.mode==='26'?'on':''}">26日 → 25日</button><button data-m="1" class="${S.mode==='1'?'on':''}">1日 → 月底</button></div><button class="ghost${multi?' on':''}" data-a="multi">${multi?'完成':'多選日期'}</button></div>
+ <div class="wk">${'日一二三四五六'.split('').map(x=>`<div>${x}</div>`).join('')}</div>
+ <div class="grid">${cells}</div>
+ ${multi&&sel.size?`<div class="bar"><button class="pri" data-a="apply">已選 ${sel.size} 天 · 輸入工時</button></div>`:''}`;
+}
+function vStats(){
+ const t=totals(cur),ds=days(cur),vals=ds.map(d=>(S.data[iso(d)]||{h:0}).h);
+ const mx=Math.max(1,...vals),best=Math.max(0,...vals);
+ const bars=ds.map((d,i)=>`<i title="${iso(d)}" style="height:${Math.max(3,vals[i]/mx*100)}%;${vals[i]?'':'opacity:.2'}"></i>`).join('');
+ const hist=[];for(let i=5;i>=0;i--){let c={y:cur.y,m:cur.m-i};while(c.m<1){c.m+=12;c.y--}hist.push({c,h:totals(c).h})}
+ const hm=Math.max(1,...hist.map(x=>x.h));
+ return `<h2 style="margin-top:28px">統計</h2><div class="sub" style="margin:0">${cur.y}年${cur.m}月薪資期</div>
+ <div class="kv"><div><span>總工時</span><b>${fmt(t.h)}</b></div><div><span>預估薪資</span><b>NT$ ${money(t.h*S.rate)}</b></div><div><span>出勤天數</span><b>${t.n}</b></div><div><span>平均每日</span><b>${t.n?fmt(t.h/t.n):0}h</b></div></div>
+ <div class="card stat"><b>每日工時</b><span style="color:var(--mut);font-size:13px"> 最高 ${fmt(best)}h</span><div class="chart">${bars}</div></div>
+ <div class="card stat"><b>近 6 期</b><div class="chart big">${hist.map(x=>`<div class="lbl"><span style="color:var(--text)">${fmt(x.h)}</span><i style="width:100%;height:${Math.max(3,x.h/hm*100)}px"></i>${x.c.m}月</div>`).join('')}</div></div>`;
+}
+function vSet(){
+ return `<h2 style="margin-top:28px">設定</h2>
+ <div class="card set">
+  <div class="r"><label style="margin:0">時薪 (NT$)</label><input id="rate" type="number" inputmode="decimal" value="${S.rate}"></div>
+  <div class="r"><label style="margin:0">預設每日工時</label><input id="defH" type="number" inputmode="decimal" step="0.5" value="${S.defH}"></div>
+ </div>
+ <div class="card set"><div class="r"><button class="ghost" style="width:100%" data-a="export">備份 / 分享資料</button></div>
+  <div class="r"><label style="margin:0">還原資料(貼上備份文字)</label><textarea id="imp" rows="3" style="font-size:14px"></textarea><button class="ghost" style="width:100%;margin-top:10px" data-a="import">還原</button></div>
+  <div class="r"><button class="ghost del" style="width:100%" data-a="clear">清除全部資料</button></div></div>`;
+}
+let clearArm=false;
+function bind(){
+ document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const k=b.dataset.d;if(multi){sel.has(k)?sel.delete(k):sel.add(k);render()}else openSheet([k])});
+ document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{S.mode=b.dataset.m;save();cur=initCursor();sel.clear();render()});
+ document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>act(b.dataset.a));
+ const r=document.getElementById('rate');if(r)r.onchange=()=>{S.rate=parseFloat(r.value)||0;save();toast('已儲存')};
+ const h=document.getElementById('defH');if(h)h.onchange=()=>{S.defH=parseFloat(h.value)||8;save();toast('已儲存')};
+}
+function act(a){
+ if(a==='prev')shiftP(-1);else if(a==='next')shiftP(1);
+ else if(a==='eye'){S.hide=!S.hide;save();render()}
+ else if(a==='multi'){multi=!multi;sel.clear();render()}
+ else if(a==='apply')openSheet([...sel].sort());
+ else if(a==='export'){const t=JSON.stringify(S);if(window.Android)Android.share(t);else if(navigator.clipboard){navigator.clipboard.writeText(t);toast('已複製')}}
+ else if(a==='import'){try{const o=JSON.parse(document.getElementById('imp').value);if(o&&o.data){S=Object.assign(S,o);save();toast('已還原');render()}}catch(e){toast('格式錯誤')}}
+ else if(a==='clear'){if(!clearArm){clearArm=true;toast('再按一次確認清除');setTimeout(()=>clearArm=false,3000)}else{S.data={};save();clearArm=false;toast('已清除');render()}}
+}
+function openSheet(keys){
+ const first=S.data[keys[0]]||{};let hv=first.h!==undefined?first.h:S.defH;
+ const bg=document.createElement('div');bg.className='sheetbg';
+ const label=keys.length===1?keys[0].slice(5).replace('-','/'):`${keys.length} 天`;
+ bg.innerHTML=`<div class="sheet"><h3>${label} 工時</h3>
+ <div class="chips">${[4,6,8,10,12].map(n=>`<button data-h="${n}" class="${hv==n?'on':''}">${n}</button>`).join('')}</div>
+ <label>工時(小時)</label><input id="sh" type="number" inputmode="decimal" step="0.5" value="${hv}">
+ <label>備註</label><input id="sn" type="text" style="font-size:16px" value="${(first.n||'').replace(/"/g,'&quot;')}">
+ <div class="btns"><button class="del" id="sd">清除</button><button class="pri" id="ss">儲存</button></div></div>`;
+ document.body.appendChild(bg);
+ bg.onclick=e=>{if(e.target===bg)bg.remove()};
+ bg.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{bg.querySelector('#sh').value=b.dataset.h;bg.querySelectorAll('[data-h]').forEach(x=>x.classList.toggle('on',x===b))});
+ bg.querySelector('#sd').onclick=()=>{keys.forEach(k=>delete S.data[k]);save();bg.remove();endMulti()};
+ bg.querySelector('#ss').onclick=()=>{const h=parseFloat(bg.querySelector('#sh').value)||0,n=bg.querySelector('#sn').value.trim();keys.forEach(k=>{if(h>0)S.data[k]={h,n};else delete S.data[k]});save();bg.remove();endMulti()};
+}
+function endMulti(){multi=false;sel.clear();render()}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;multi=false;sel.clear();render();scrollTo(0,0)});
+render();
+</script>
+</body>
+</html>

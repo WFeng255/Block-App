@@ -210,7 +210,7 @@ textarea{min-height:90px;resize:vertical;font-size:13px;font-family:ui-monospace
 (function(){
 'use strict';
 var KEY='so-gio-cong.v1';
-var DEF={rate:200,std:8,m1:1.34,m2:1.67,m3:2.67,cycle:'A',hide:false};
+var DEF={rate:200,cycle:'A',hide:false};
 var WD=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
 var DOW=['日','一','二','三','四','五','六'];
 var storageOK=true;
@@ -279,19 +279,7 @@ function dm(d){return (d.getMonth()+1)+'/'+d.getDate();}
 
 /* ---------- pay math ---------- */
 function calc(h,t,s){
-  var b=[0,0,0,0];
-  if(t==='r'){
-    b[1]=Math.min(h,2);
-    b[2]=Math.min(Math.max(h-2,0),6);
-    b[3]=Math.max(h-8,0);
-  }else{
-    b[0]=Math.min(h,s.std);
-    b[1]=Math.min(Math.max(h-s.std,0),2);
-    b[2]=Math.max(h-s.std-2,0);
-  }
-  var mult=[1,s.m1,s.m2,s.m3],pay=0;
-  for(var i=0;i<4;i++)pay+=b[i]*mult[i];
-  return {b:b,pay:pay*s.rate};
+  return {b:[h,0,0,0],pay:h*s.rate};
 }
 function summarize(p){
   var t={h:0,pay:0,days:0,b:[0,0,0,0]};
@@ -305,8 +293,7 @@ function summarize(p){
   return t;
 }
 function bucketLabels(){
-  var s=state.settings;
-  return ['正常工時 ×1','加班 ×'+fmtH(s.m1),'加班 ×'+fmtH(s.m2),'休息日 ×'+fmtH(s.m3)];
+  return ['工時'];
 }
 
 /* ---------- ui state ---------- */
@@ -374,12 +361,12 @@ function renderHome(){
   for(var d=new Date(p.start);d<=p.end;d.setDate(d.getDate()+1)){
     var k=key(d),e=state.days[k],has=e&&e.h>0;
     var cls='day';
-    if(has){cls+=' has';if(e.t==='r')cls+=' rest';else if(e.h>s.std)cls+=' ot';}
+    if(has)cls+=' has';
     if(k===todayK)cls+=' today';
     if(selected[k])cls+=' sel';
     h+='<button class="'+cls+'" data-act="day" data-k="'+k+'" aria-label="'+WD[d.getDay()]+' '+dm(d)+(has?'，'+fmtH(e.h)+' 小時':'')+'"><span class="n">'+d.getDate()+'</span><span class="h">'+(has?fmtH(e.h)+'h':'&nbsp;')+'</span></button>';
   }
-  h+='</div><div class="legend"><span><i style="background:var(--accent)"></i>平日</span><span><i style="background:var(--ot)"></i>有加班</span><span><i style="background:var(--rest)"></i>休息日</span></div>';
+  h+='</div>';
   if(t.days===0)h+='<div class="card hint"><div class="catbox">'+cat()+'<p><b>這一期還沒有紀錄</b><br><span class="muted small">點一下日期，輸入工時，財運就跟著來。</span></p></div></div>';
   $main.innerHTML=h;
 }
@@ -411,7 +398,7 @@ function donut(t){
 }
 
 function dailyChart(p){
-  var s=state.settings,W=340,H=170,L=30,R=6,T=10,B=22,days=[],mx=s.std;
+  var s=state.settings,W=340,H=170,L=30,R=6,T=10,B=22,days=[],mx=0;
   for(var d=new Date(p.start);d<=p.end;d.setDate(d.getDate()+1)){
     var e=state.days[key(d)];
     days.push({n:d.getDate(),e:(e&&e.h>0)?e:null});
@@ -420,20 +407,19 @@ function dailyChart(p){
   var n=days.length,yMax=Math.ceil((mx+0.5)/2)*2,pw=W-L-R,ph=H-T-B,bw=pw/n,bwid=Math.max(bw*0.66,2);
   function y(v){return T+ph-v/yMax*ph;}
   var g='',ticks=[0,yMax];
-  if(s.std>1&&s.std<yMax-1)ticks.push(s.std);
   ticks.forEach(function(v){
-    g+='<line class="'+(v===s.std&&v!==0&&v!==yMax?'dash':'grid')+'" x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'"/>'
+    g+='<line class="'+'grid'+'" x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'"/>'
       +'<text class="ct" x="'+(L-5)+'" y="'+(y(v)+3.5)+'" text-anchor="end">'+fmtH(v)+'</text>';
   });
   days.forEach(function(dd,i){
     var cx=L+i*bw+bw/2;
     if(dd.e){
-      var hh=dd.e.h/yMax*ph,cls=dd.e.t==='r'?'br':(dd.e.h>s.std?'bo':'bn');
+      var hh=dd.e.h/yMax*ph,cls='bn';
       g+='<rect class="'+cls+'" x="'+(cx-bwid/2)+'" y="'+(T+ph-hh)+'" width="'+bwid+'" height="'+hh+'" rx="2"/>';
     }
     if(i===0||i%7===0||(i===n-1&&(n-1)%7>=3))g+='<text class="ct" x="'+cx+'" y="'+(H-6)+'" text-anchor="middle">'+dd.n+'</text>';
   });
-  return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="每日工時長條圖，虛線為每日正常工時 '+fmtH(s.std)+' 小時">'+g+'</svg>';
+  return '<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="每日工時長條圖">'+g+'</svg>';
 }
 
 function trendChart(rows){
@@ -464,7 +450,6 @@ function renderStats(){
   var s=state.settings;
   var p=periodOf(s.cycle,view.y,view.m);
   var t=summarize(p);
-  var labs=bucketLabels(),mult=[1,s.m1,s.m2,s.m3];
   var h='<h1 style="margin:4px 0 12px">'+coin()+'統計</h1>'+periodCard(p);
   h+='<div class="tiles">'
     +'<div class="card tile"><div class="v">'+fmtH(t.h)+'</div><div class="l">總工時</div></div>'
@@ -474,15 +459,7 @@ function renderStats(){
   if(t.days===0){
     h+='<div class="card hint" style="margin-top:14px"><div class="catbox">'+cat()+'<p><b>這一期還沒有資料</b><br><span class="muted small">回到「記工時」輸入幾天，圖表就會出現。</span></p></div></div>';
   }else{
-    h+='<h2>'+coin()+'工時分布</h2><div class="card"><div class="donutwrap">'+donut(t)+'<div class="dlegend">';
-    var colors=['var(--accent)','var(--gold)','var(--ot)','var(--rest)'];
-    for(var i=0;i<4;i++){
-      if(t.b[i]<=0)continue;
-      h+='<div class="r"><i style="background:'+colors[i]+'"></i><span>'+labs[i]+'</span><span><b>'+fmtH(t.b[i])+'h</b><small>'+(s.hide?'•••':'NT$'+fmtM(t.b[i]*mult[i]*s.rate))+'</small></span></div>';
-    }
-    h+='</div></div></div>';
-    h+='<h2>'+coin()+'每日工時</h2><div class="card">'+dailyChart(p)
-      +'<div class="legend"><span><i style="background:var(--accent)"></i>平日</span><span><i style="background:var(--ot)"></i>有加班</span><span><i style="background:var(--rest)"></i>休息日</span><span>虛線：正常工時 '+fmtH(s.std)+'h</span></div></div>';
+    h+='<h2>'+coin()+'每日工時</h2><div class="card">'+dailyChart(p)+'</div>';
   }
   var rows=[];
   for(var j=5;j>=0;j--){
@@ -500,13 +477,9 @@ function field(id,label,val,hint){
 function renderSettings(){
   var s=state.settings;
   var h='<h1 style="margin:4px 0 12px">'+coin()+'設定</h1>';
-  h+='<h2 style="margin-top:4px">時薪與加班</h2><div class="card"><div class="settings-grid">'
+  h+='<h2 style="margin-top:4px">時薪</h2><div class="card"><div class="settings-grid">'
     +field('rate','時薪 (NT$)',s.rate)
-    +field('std','每日正常工時',s.std)
-    +field('m1','加班倍率（前 2 小時）',s.m1)
-    +field('m2','加班倍率（第 3 小時起）',s.m2)
-    +field('m3','休息日倍率（第 8 小時後）',s.m3)
-    +'</div><p class="muted small" style="margin:6px 0 0">平日：超過正常工時後，前 2 小時乘第一個倍率，之後乘第二個倍率。休息日：前 2 小時乘第一個倍率，到第 8 小時乘第二個倍率，之後乘休息日倍率。這是台灣常見的試算標準，請對照你的合約與薪資單再調整數字。</p></div>';
+    +'</div><p class="muted small" style="margin:6px 0 0">薪資 = 工時 × 時薪，沒有加班或假日倍率。</p></div>';
   h+='<h2>薪資期間</h2><div class="btns" style="flex-direction:column">'
     +'<button class="opt" data-act="cycle" data-v="A" aria-pressed="'+(s.cycle==='A')+'"><span class="dot"></span><span><b>26 日 → 隔月 25 日</b><br><span class="muted small">例：10 月期為 9/26 至 10/25</span></span></button>'
     +'<button class="opt" data-act="cycle" data-v="B" aria-pressed="'+(s.cycle==='B')+'"><span class="dot"></span><span><b>1 日 → 月底</b><br><span class="muted small">例：10 月期為 10/1 至 10/31</span></span></button></div>';
@@ -522,7 +495,7 @@ function renderSettings(){
   h+='<div class="field"><label for="imp">從文字或檔案還原</label><textarea id="imp" placeholder="把複製的備份內容貼在這裡"></textarea>'
     +'<div class="btns"><button class="btn small" data-act="import">還原</button><label class="btn small" style="cursor:pointer">選擇檔案<input type="file" id="impfile" accept=".json,application/json,text/plain" hidden></label></div></div></div>';
   h+='<h2>其他</h2><div class="card"><button class="btn danger" data-act="wipe">清除所有工時資料</button></div>';
-  h+='<div class="catbox" style="margin-top:22px;justify-content:center">'+cat()+'<p class="muted small">招財貓幫你看著錢包，<br>加班費一塊都不會少。</p></div>';
+  h+='<div class="catbox" style="margin-top:22px;justify-content:center">'+cat()+'<p class="muted small">招財貓幫你看著錢包，<br>每一塊都不會少。</p></div>';
   $main.innerHTML=h;
 }
 
@@ -531,16 +504,14 @@ function openSheet(keys){
   var first=state.days[keys[0]];
   var d0=keyToDate(keys[0]);
   var single=keys.length===1;
-  var t=(single&&first)?first.t:((d0.getDay()===0||d0.getDay()===6)?'r':'n');
-  if(!single)t=(d0.getDay()===0||d0.getDay()===6)?'r':'n';
-  sheet={keys:keys,t:t||'n',h:(single&&first&&first.h>0)?first.h:state.settings.std,n:(single&&first&&first.n)?first.n:''};
+  sheet={keys:keys,t:'n',h:(single&&first&&first.h>0)?first.h:0,n:(single&&first&&first.n)?first.n:''};
   paintSheet();
   $ov.className='show';
 }
 function closeSheet(){sheet=null;$ov.className='';$ov.innerHTML='';}
 function previewHtml(){
-  var s=state.settings,c=calc(sheet.h,sheet.t,s),labs=bucketLabels(),parts=[];
-  for(var i=0;i<4;i++)if(c.b[i]>0)parts.push(fmtH(c.b[i])+'h '+labs[i].replace(/^.*(×.*)$/,'$1'));
+  var s=state.settings,c=calc(sheet.h,sheet.t,s),parts=[];
+  if(sheet.h>0)parts.push(fmtH(sheet.h)+'h × NT$'+fmtM(s.rate));
   var n=sheet.keys.length;
   return '每天：<b>NT$ '+fmtM(c.pay)+'</b><br><span class="muted">'+(parts.join(' + ')||'尚未輸入工時')+'</span>'+(n>1?'<br>'+n+' 天合計：<b>NT$ '+fmtM(c.pay*n)+'</b>（'+fmtH(sheet.h*n)+' 小時）':'');
 }
@@ -548,11 +519,10 @@ function paintSheet(){
   var n=sheet.keys.length,title;
   if(n===1){var d=keyToDate(sheet.keys[0]);title=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 '+WD[d.getDay()];}
   else title='一次輸入 '+n+' 天';
-  var chips=[4,6,8,9,10,12].map(function(v){return '<button class="chip" data-act="chiph" data-v="'+v+'" aria-pressed="'+(sheet.h===v)+'">'+v+'h</button>';}).join('');
+  var chips=[1,1.5,2,2.5,3,3.5,4,4.5,5,6,7,8,9,10,12].map(function(v){return '<button class="chip" data-act="chiph" data-v="'+v+'" aria-pressed="'+(sheet.h===v)+'">'+v+'h</button>';}).join('');
   var hasAny=sheet.keys.some(function(k){return state.days[k];});
   var h='<div class="sheet" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><h3>'+esc(title)+'</h3>'
-    +'<div class="field"><span class="lbl">日別</span><div class="seg" style="align-self:flex-start"><button data-act="stype" data-v="n" aria-pressed="'+(sheet.t==='n')+'">平日</button><button data-act="stype" data-v="r" aria-pressed="'+(sheet.t==='r')+'">休息日</button></div></div>'
-    +'<div class="field"><label for="shh">工時（小時）</label><div class="stepper"><button data-act="hminus" aria-label="減少半小時">−</button><input type="text" inputmode="decimal" id="shh" value="'+esc(String(sheet.h))+'" autocomplete="off"><button data-act="hplus" aria-label="增加半小時">+</button></div><div class="chips" id="chips">'+chips+'</div></div>'
+    +'<div class="field"><label for="shh">工時（小時）</label><div class="stepper"><button data-act="hminus" aria-label="減少半小時">−</button><input type="text" inputmode="decimal" id="shh" value="'+(sheet.h>0?esc(String(sheet.h)):'')+'" placeholder="0" autocomplete="off"><button data-act="hplus" aria-label="增加半小時">+</button></div><div class="chips" id="chips">'+chips+'</div></div>'
     +(n===1?'<div class="field"><label for="shn">備註</label><input type="text" id="shn" value="'+esc(sheet.n)+'" placeholder="例如：夜班、臨時加班" autocomplete="off"></div>':'')
     +'<div class="preview" id="prev">'+previewHtml()+'</div>'
     +'<div class="btns" style="margin-top:14px"><button class="btn primary" data-act="ssave" style="flex:1">儲存</button>'

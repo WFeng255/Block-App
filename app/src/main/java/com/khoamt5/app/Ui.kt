@@ -50,16 +50,16 @@ object Ui {
     private val D_BORDER = Color.parseColor("#2A313C")
     private val L_TEXT = Color.parseColor("#12161C")
     private val D_TEXT = Color.parseColor("#F0F3F6")
-    private val L_MUTED = Color.parseColor("#6B7280")
-    private val D_MUTED = Color.parseColor("#9AA4B2")
-    private val L_LINK = Color.parseColor("#2563EB")
-    private val D_LINK = Color.parseColor("#7DB1FF")
+    private val L_MUTED = Color.parseColor("#566070")
+    private val D_MUTED = Color.parseColor("#B9C2CE")
+    private val L_LINK = Color.parseColor("#0D9488")
+    private val D_LINK = Color.parseColor("#5EEAD4")
     private val L_OK = Color.parseColor("#16A34A")
     private val D_OK = Color.parseColor("#34D399")
     private val L_WARN = Color.parseColor("#D97706")
     private val D_WARN = Color.parseColor("#FBBF24")
     private val L_BASE = Color.parseColor("#FAFBFC")
-    private val D_BASE = Color.parseColor("#0D1117")
+    private val D_BASE = Color.parseColor("#0B0F14")
     private val L_BANNER = Color.parseColor("#FFF7E6")
     private val D_BANNER = Color.parseColor("#3A2E12")
     private val L_BANNER_B = Color.parseColor("#F5D9A8")
@@ -82,9 +82,11 @@ object Ui {
     /** Chữ đặt trên nền màu đảo ngược (chip đang chọn). */
     val ON_TEXT: Int get() = pick(Color.WHITE, L_TEXT)
 
-    val ACCENT = Color.parseColor("#E5484D")
+    // Hai họ màu: xanh ngọc (sẵn sàng) và lửa than (đang khóa). Link dùng xanh ngọc cho cùng một nhà.
+    val ACCENT = Color.parseColor("#F2543D")
     val TEAL = Color.parseColor("#14B8A6")
     val CORAL = Color.parseColor("#FF6B4A")
+    val CRIMSON = Color.parseColor("#E11D48")
 
     /** Đổi giá trị đã chọn thành nền mới: aurora động nên chỉ cần chỉnh thanh hệ thống. */
     fun applyTheme(a: Activity, v: AuroraView, locked: Boolean) {

@@ -14,7 +14,7 @@ import kotlin.math.sin
 /**
  * Nền aurora: vài mảng màu mờ trôi chậm trên nền gần trắng (hoặc gần đen khi nền tối).
  * Hai cách đổi màu:
- *  - Theo trạng thái: sẵn sàng là xanh ngọc, tím, xanh trời; đang khóa là cam, hồng, tím nhạt.
+ *  - Theo trạng thái: sẵn sàng là họ xanh ngọc, xanh biển; đang khóa là họ lửa than, cam hổ phách, đỏ.
  *  - Chuyển màu từ từ: sắc độ xoay chậm qua cả dải màu, khoảng 1 phút một vòng.
  */
 class AuroraView(context: Context) : View(context) {
@@ -35,16 +35,16 @@ class AuroraView(context: Context) : View(context) {
     private var shaderKey = -1L
 
     private val calm = intArrayOf(
-        Color.parseColor("#1FD1B8"),
-        Color.parseColor("#8B5CF6"),
-        Color.parseColor("#38BDF8"),
-        Color.parseColor("#4ADE80")
+        Color.parseColor("#14B8A6"),
+        Color.parseColor("#0EA5E9"),
+        Color.parseColor("#10B981"),
+        Color.parseColor("#2563EB")
     )
     private val hot = intArrayOf(
-        Color.parseColor("#FF6B4A"),
-        Color.parseColor("#F472B6"),
-        Color.parseColor("#FB923C"),
-        Color.parseColor("#A78BFA")
+        Color.parseColor("#FF5A36"),
+        Color.parseColor("#F59E0B"),
+        Color.parseColor("#E11D48"),
+        Color.parseColor("#FB7185")
     )
 
     // Vị trí gốc (tỉ lệ theo chiều rộng/cao) và chu kỳ trôi của từng mảng.
@@ -75,7 +75,7 @@ class AuroraView(context: Context) : View(context) {
     }
 
     private fun rebuildShaders(radius: Float, timeMs: Long) {
-        val alpha = if (Ui.dark) 150 else 225
+        val alpha = if (Ui.dark) 135 else 190
         for (i in 0 until 4) {
             val c = blobColor(i, timeMs)
             val center = Color.argb(alpha, Color.red(c), Color.green(c), Color.blue(c))

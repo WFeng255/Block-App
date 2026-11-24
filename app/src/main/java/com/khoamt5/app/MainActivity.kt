@@ -282,7 +282,7 @@ class MainActivity : Activity() {
                 lockBtn.background = Ui.rounded(this, Ui.TRACK, 14)
                 lockBtn.setTextColor(Ui.MUTED)
             } else {
-                lockBtn.background = Ui.gradientRounded(this, Ui.CORAL, Color.parseColor("#FF3D71"), 14)
+                lockBtn.background = Ui.gradientRounded(this, Ui.CORAL, Ui.CRIMSON, 14)
                 lockBtn.setTextColor(Color.WHITE)
             }
         }

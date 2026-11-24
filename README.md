@@ -19,11 +19,14 @@ Blocking runs in two independent layers, because phone vendors like to kill back
 
 Both draw the same cover, and either one alone is enough to block.
 
+While the lock is on, Block also kills the background process of every locked app every couple of seconds. That sounds rough, but it's there for a reason: on my phone, going back to an app through the recents screen doesn't report that the app came to the front, so the cover never showed. A killed app has to start from scratch when you tap it, and starting always gets reported. A touch on a locked app also counts as "it's in front", as a second safety net.
+
 Block never locks itself, System UI, Settings, the phone/dialer/emergency apps, contacts, or your home launcher, so you can't lock yourself out of making a call.
 
 ### Other things in the app
 
 - A reminder text of your own, shown on the cover.
+- An app picker with icons and a search box (it ignores accents and capitals).
 - A log of your last 100 locks, with a note you can add to each one ("lost two trades in a row", etc.).
 - A day-by-day streak: after each day you mark whether you kept to your rules.
 - Share or copy the whole log as text, e.g. to save it in Notion.
@@ -47,7 +50,9 @@ After installing, open Settings inside the app and grant the five permissions li
 
 - It's not tamper-proof. Settings is deliberately left unlocked, so you can still uninstall Block or turn off its permissions. It's meant to stop an impulse, not a determined you.
 - I've only used it on one phone, a Xiaomi (MIUI/HyperOS). Xiaomi and other vendors kill background apps aggressively, so turn on Autostart, set battery to "No restrictions", and lock Block's card in the recents screen.
-- Going back to a locked app from the recents screen used to slip past the lock on my Xiaomi. It holds now (usage events are re-read with a 4 second overlap), but I haven't tried other phones. If it happens to you, Settings has a Diagnostics box showing what each blocking layer saw.
+- Locked apps lose their state while the lock is on, since their background process keeps getting killed. MT5 reloads its chart when you reopen it (open trades stay, they live on the broker's server), TikTok forgets where you were, half-typed messages are gone. Notifications from locked apps mostly still arrive, but I haven't checked every app and some may come late.
+- Android doesn't let an app disable another app, only cover it, so there's always a moment between tapping and the cover showing. Usually about a second.
+- On my Xiaomi the accessibility layer shows as enabled but doesn't receive events, so only the usage layer is doing the work there. Settings tells you whether layer 1 is really connected, and has a Diagnostics box showing what each layer saw. I haven't had enough days with the kill-and-touch workaround to say it never slips.
 - It's signed with the debug key, so each new build has to be installed after uninstalling the old one, which wipes the log. Use Share on the log screen to back it up first.
 - Locking an app doesn't close anything inside it. An open trade stays open, so set a stop loss before you walk away.
 

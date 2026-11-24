@@ -46,7 +46,8 @@ After installing, open Settings inside the app and grant the five permissions li
 ## What's missing
 
 - It's not tamper-proof. Settings is deliberately left unlocked, so you can still uninstall Block or turn off its permissions. It's meant to stop an impulse, not a determined you.
-- I've only used it on one phone (ColorOS). Other vendors may need autostart and battery settings changed so the background service survives.
+- I've only used it on one phone, a Xiaomi (MIUI/HyperOS). Xiaomi and other vendors kill background apps aggressively, so turn on Autostart, set battery to "No restrictions", and lock Block's card in the recents screen.
+- Going back to a locked app from the recents screen has slipped past the lock on my phone. I'm still tracking it down; Settings has a Diagnostics box that shows what each blocking layer saw.
 - It's signed with the debug key, so each new build has to be installed after uninstalling the old one, which wipes the log. Use Share on the log screen to back it up first.
 - Locking an app doesn't close anything inside it. An open trade stays open, so set a stop loss before you walk away.
 

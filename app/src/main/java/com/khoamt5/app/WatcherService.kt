@@ -1,5 +1,6 @@
 package com.khoamt5.app
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -46,7 +47,9 @@ class WatcherService : Service() {
     private var lastEventTs = 0L
     private var lastHome = 0L
     private var lastDog = 0L
-    private var lastLogTs = 0L
+    private val seenEv = HashSet<String>()
+    private var lastKill = 0L
+    private var lastKillLog = 0L
     private var protectedPkgs: Set<String> = emptySet()
     private var running = false
 
@@ -69,6 +72,12 @@ class WatcherService : Service() {
                 Watchdog.schedule(this@WatcherService)
             }
             refreshForeground()
+
+            // Tắt tiến trình nền của app bị khóa để lần mở sau là khởi động mới, luôn có sự kiện "vào".
+            if (tNow - lastKill > 2500L) {
+                lastKill = tNow
+                killLockedInBackground(tNow)
+            }
 
             val pkg = fgPackage
             if (pkg != null &&
@@ -159,34 +168,60 @@ class WatcherService : Service() {
             val events = usm.queryEvents((lastEventTs - 4000L).coerceAtLeast(0L), System.currentTimeMillis())
             val e = UsageEvents.Event()
             var maxTs = lastEventTs
-            var logTs = lastLogTs
+            val locked = LockStore.lockedPackages(this)
             while (events.hasNextEvent()) {
                 events.getNextEvent(e)
                 if (e.timeStamp > maxTs) maxTs = e.timeStamp
-                if (e.timeStamp > lastLogTs && e.packageName != packageName &&
-                    (e.eventType == EV_FG || e.eventType == EV_BG || e.eventType == 23)
+                val pk = e.packageName
+                // Ghi lại mọi sự kiện (trừ đổi nhóm chờ) kèm giờ của chính sự kiện, mỗi sự kiện một lần.
+                if (pk != packageName && e.eventType != 4 &&
+                    seenEv.add(e.timeStamp.toString() + "|" + e.eventType + "|" + pk)
                 ) {
                     val what = when (e.eventType) {
-                        EV_FG -> "vào "
-                        EV_BG -> "rời "
-                        else -> "dừng"
+                        EV_FG -> "vào"
+                        EV_BG -> "rời"
+                        23 -> "dừng"
+                        7 -> "chạm"
+                        else -> "t" + e.eventType
                     }
-                    LockStore.diag("L2", what + " " + e.packageName)
-                    if (e.timeStamp > logTs) logTs = e.timeStamp
+                    LockStore.diag("L2", what + " " + pk + " @" + (e.timeStamp % 100000L))
                 }
                 when (e.eventType) {
-                    EV_FG -> fgPackage = e.packageName
-                    EV_BG -> if (e.packageName == fgPackage) fgPackage = null
+                    EV_FG -> fgPackage = pk
+                    EV_BG -> if (pk == fgPackage) fgPackage = null
                     EV_SCREEN_OFF -> fgPackage = null
+                    // Quay lại app từ màn hình đa nhiệm trên máy này không có sự kiện "vào":
+                    // chạm vào app bị khóa cũng tính là app đang ở trên cùng.
+                    7 -> if (pk != fgPackage && pk != packageName && pk in locked && pk !in protectedPkgs) {
+                        fgPackage = pk
+                    }
                 }
             }
+            if (seenEv.size > 400) seenEv.clear()
             lastEventTs = maxTs
-            lastLogTs = logTs
         } catch (_: Exception) {
         }
         val p = fgPackage
         if (p != null && p != packageName && p != "com.android.systemui") {
             LockStore.watchSeen = p
+        }
+    }
+
+    private fun killLockedInBackground(nowMs: Long) {
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
+        val fg = fgPackage
+        val tried = ArrayList<String>()
+        for (p in LockStore.lockedPackages(this)) {
+            if (p == fg || p == packageName || p in protectedPkgs) continue
+            try {
+                am.killBackgroundProcesses(p)
+                tried.add(p)
+            } catch (_: Exception) {
+            }
+        }
+        if (tried.isNotEmpty() && nowMs - lastKillLog > 20_000L) {
+            lastKillLog = nowMs
+            LockStore.diag("L2", "tắt nền " + tried.size + " app: " + tried.joinToString(", "))
         }
     }
 

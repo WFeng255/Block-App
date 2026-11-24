@@ -276,7 +276,11 @@ class SettingsActivity : Activity() {
         }
 
         val acc = Perms.accessibility(this)
-        var t1 = "Lớp 1 · Trợ năng: " + (if (acc) "bật" else "tắt")
+        var t1 = "Lớp 1 · Trợ năng: " + (
+            if (!acc) "tắt"
+            else if (LockService.connected) "bật, đã kết nối"
+            else "bật nhưng CHƯA kết nối (tắt rồi bật lại trong Trợ năng của máy)"
+        )
         if (LockStore.accSeen.isNotEmpty()) t1 += "\nVừa thấy mở: " + LockStore.accSeen
         layer1.text = t1
 

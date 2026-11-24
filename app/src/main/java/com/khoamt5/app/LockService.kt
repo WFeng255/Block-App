@@ -2,6 +2,7 @@ package com.khoamt5.app
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -16,6 +17,11 @@ import android.view.inputmethod.InputMethodManager
  * Không đọc nội dung màn hình (canRetrieveWindowContent = false).
  */
 class LockService : AccessibilityService() {
+
+    companion object {
+        /** Công tắc Trợ năng bật chưa chắc dịch vụ đang chạy: cờ này cho biết nó thực sự đã kết nối. */
+        @Volatile var connected = false
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var currentPkg: String? = null
@@ -66,6 +72,8 @@ class LockService : AccessibilityService() {
     /** Hệ thống nối lại Trợ năng sau khi tiến trình bị tắt: bật luôn lớp 2 nếu đang khóa. */
     override fun onServiceConnected() {
         super.onServiceConnected()
+        connected = true
+        LockStore.diag("L1", "dịch vụ Trợ năng đã kết nối")
         if (LockStore.isLocked(this)) {
             WatcherService.start(this)
             Watchdog.schedule(this)
@@ -107,7 +115,14 @@ class LockService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    override fun onUnbind(intent: Intent?): Boolean {
+        connected = false
+        LockStore.diag("L1", "dịch vụ Trợ năng bị ngắt")
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        connected = false
         handler.removeCallbacks(loop)
         looping = false
         if (BlockOverlay.owner == BlockOverlay.OWNER_ACC) BlockOverlay.hide()

@@ -63,6 +63,15 @@ class LockService : AccessibilityService() {
         }
     }
 
+    /** Hệ thống nối lại Trợ năng sau khi tiến trình bị tắt: bật luôn lớp 2 nếu đang khóa. */
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        if (LockStore.isLocked(this)) {
+            WatcherService.start(this)
+            Watchdog.schedule(this)
+        }
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
@@ -78,7 +87,13 @@ class LockService : AccessibilityService() {
         }
 
         currentPkg = pkg
-        if (pkg != packageName) LockStore.accSeen = pkg
+        if (pkg != packageName) {
+            LockStore.accSeen = pkg
+            LockStore.diag(
+                "L1",
+                pkg + if (isBlocked(pkg) && LockStore.remainingMs(this) > 0L) "  -> CHẶN" else ""
+            )
+        }
 
         if (isBlocked(pkg) && LockStore.remainingMs(this) > 0L) {
             if (!looping) {

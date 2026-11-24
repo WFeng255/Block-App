@@ -45,6 +45,8 @@ class WatcherService : Service() {
     private var fgPackage: String? = null
     private var lastEventTs = 0L
     private var lastHome = 0L
+    private var lastDog = 0L
+    private var lastLogTs = 0L
     private var protectedPkgs: Set<String> = emptySet()
     private var running = false
 
@@ -54,12 +56,18 @@ class WatcherService : Service() {
             val remaining = LockStore.remainingMs(this@WatcherService)
             if (remaining <= 0L) {
                 running = false
+                Watchdog.cancel(this@WatcherService)
                 BlockOverlay.hide()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return
             }
             LockStore.watchAliveAt = System.currentTimeMillis()
+            val tNow = SystemClock.elapsedRealtime()
+            if (tNow - lastDog > 15_000L) {
+                lastDog = tNow
+                Watchdog.schedule(this@WatcherService)
+            }
             refreshForeground()
 
             val pkg = fgPackage
@@ -67,12 +75,14 @@ class WatcherService : Service() {
                 pkg in LockStore.lockedPackages(this@WatcherService) &&
                 pkg !in protectedPkgs
             ) {
+                val fresh = BlockOverlay.owner == BlockOverlay.OWNER_NONE
                 val ok = BlockOverlay.show(
                     this@WatcherService,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                     remaining,
                     BlockOverlay.OWNER_WATCH
                 ) { goHome() }
+                if (fresh) LockStore.diag("L2", "che " + pkg + (if (ok) " ok" else " LỖI"))
                 if (!ok) goHome()
             } else if (BlockOverlay.owner == BlockOverlay.OWNER_WATCH) {
                 BlockOverlay.hide()
@@ -103,6 +113,12 @@ class WatcherService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** Bị vuốt khỏi đa nhiệm: hẹn báo thức để bật lại ngay nếu hệ thống tắt luôn tiến trình. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (LockStore.isLocked(this)) Watchdog.schedule(this, 1500L)
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onDestroy() {
         running = false
@@ -138,12 +154,26 @@ class WatcherService : Service() {
     private fun refreshForeground() {
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return
         try {
-            val events = usm.queryEvents(lastEventTs, System.currentTimeMillis())
+            // Đọc lùi thêm 4 giây và xử lý lại theo thứ tự: nếu hệ thống ghi sự kiện trễ hoặc lệch giờ
+            // (hay gặp khi quay lại app từ màn hình đa nhiệm) thì vẫn không bỏ sót.
+            val events = usm.queryEvents((lastEventTs - 4000L).coerceAtLeast(0L), System.currentTimeMillis())
             val e = UsageEvents.Event()
             var maxTs = lastEventTs
+            var logTs = lastLogTs
             while (events.hasNextEvent()) {
                 events.getNextEvent(e)
                 if (e.timeStamp > maxTs) maxTs = e.timeStamp
+                if (e.timeStamp > lastLogTs && e.packageName != packageName &&
+                    (e.eventType == EV_FG || e.eventType == EV_BG || e.eventType == 23)
+                ) {
+                    val what = when (e.eventType) {
+                        EV_FG -> "vào "
+                        EV_BG -> "rời "
+                        else -> "dừng"
+                    }
+                    LockStore.diag("L2", what + " " + e.packageName)
+                    if (e.timeStamp > logTs) logTs = e.timeStamp
+                }
                 when (e.eventType) {
                     EV_FG -> fgPackage = e.packageName
                     EV_BG -> if (e.packageName == fgPackage) fgPackage = null
@@ -151,6 +181,7 @@ class WatcherService : Service() {
                 }
             }
             lastEventTs = maxTs
+            lastLogTs = logTs
         } catch (_: Exception) {
         }
         val p = fgPackage

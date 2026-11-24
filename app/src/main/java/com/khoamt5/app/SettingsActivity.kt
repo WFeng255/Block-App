@@ -1,6 +1,9 @@
 package com.khoamt5.app
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -29,6 +32,7 @@ class SettingsActivity : Activity() {
     private lateinit var layer1: TextView
     private var builtDark = false
     private lateinit var layer2: TextView
+    private lateinit var diagView: TextView
 
     private val tick = object : Runnable {
         override fun run() {
@@ -142,6 +146,22 @@ class SettingsActivity : Activity() {
         sc.addView(layer2, Ui.lp(c, 10))
         root.addView(sc, Ui.lp(c, 8))
 
+        // Chẩn đoán
+        root.addView(Ui.text(c, "Chẩn đoán", 13f, Ui.MUTED, true), Ui.lp(c, 22))
+        val dg = Ui.card(c)
+        dg.addView(
+            Ui.text(
+                c,
+                "Mỗi lớp vừa thấy gì. Khi bị mất khóa, mở màn này, bấm Sao chép rồi dán gửi cho người sửa.",
+                12f, Ui.MUTED
+            )
+        )
+        diagView = Ui.text(c, "", 12f, Ui.TEXT)
+        diagView.typeface = android.graphics.Typeface.MONOSPACE
+        dg.addView(diagView, Ui.lp(c, 10))
+        dg.addView(Ui.link(c, "Sao chép chẩn đoán") { copyDiag() }, Ui.lp(c, 10))
+        root.addView(dg, Ui.lp(c, 8))
+
         // Mẹo
         root.addView(Ui.text(c, "Mẹo", 13f, Ui.MUTED, true), Ui.lp(c, 22))
         val tips = Ui.card(c)
@@ -156,7 +176,17 @@ class SettingsActivity : Activity() {
         tips.addView(
             Ui.text(
                 c,
-                "• Xiaomi, Oppo, Realme, Vivo: cho phép tự khởi động và khóa thẻ app trong màn hình đa nhiệm.",
+                "• Xiaomi (MIUI/HyperOS): Cài đặt → Ứng dụng → Quản lý ứng dụng → Block → bật " +
+                    "Tự khởi động, Tiết kiệm pin chọn Không hạn chế. Trong màn hình đa nhiệm, " +
+                    "nhấn giữ thẻ Block rồi bấm ổ khóa để máy không dọn nó.",
+                13f, Ui.MUTED
+            ),
+            Ui.lp(c, 8)
+        )
+        tips.addView(
+            Ui.text(
+                c,
+                "• Oppo, Realme, Vivo: cũng cho phép tự khởi động và khóa thẻ app trong màn hình đa nhiệm.",
                 13f, Ui.MUTED
             ),
             Ui.lp(c, 8)
@@ -184,6 +214,20 @@ class SettingsActivity : Activity() {
     override fun onPause() {
         handler.removeCallbacks(tick)
         super.onPause()
+    }
+
+    private fun copyDiag() {
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val acc = Perms.accessibility(this)
+            val txt = "Block chẩn đoán · trợ năng=" + acc + " · " + android.os.Build.MANUFACTURER +
+                " " + android.os.Build.MODEL + " · Android " + Build.VERSION.SDK_INT + "\n" +
+                LockStore.diagText(40)
+            cm.setPrimaryClip(ClipData.newPlainText("Block", txt))
+            Toast.makeText(this, "Đã sao chép", Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "Không sao chép được", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun open(intent: Intent) {
@@ -243,5 +287,6 @@ class SettingsActivity : Activity() {
         var t2 = "Lớp 2 · Giám sát nền: " + st
         if (LockStore.watchSeen.isNotEmpty()) t2 += "\nVừa thấy mở: " + LockStore.watchSeen
         layer2.text = t2
+        diagView.text = LockStore.diagText()
     }
 }

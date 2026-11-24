@@ -46,6 +46,23 @@ object LockStore {
     @Volatile var watchSeen: String = ""
     @Volatile var watchAliveAt: Long = 0L
 
+    // Nhật ký chẩn đoán ngắn (chỉ giữ trong bộ nhớ): mỗi lớp vừa thấy và làm gì.
+    private val diagBuf = ArrayList<String>()
+
+    @Synchronized
+    fun diag(tag: String, msg: String) {
+        val t = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        diagBuf.add("$t $tag $msg")
+        while (diagBuf.size > 60) diagBuf.removeAt(0)
+    }
+
+    /** Các dòng mới nhất, dòng mới nằm trên cùng. */
+    @Synchronized
+    fun diagText(max: Int = 16): String {
+        if (diagBuf.isEmpty()) return "(chưa có sự kiện nào)"
+        return diagBuf.takeLast(max).reversed().joinToString("\n")
+    }
+
     private fun prefs(c: Context) =
         c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 

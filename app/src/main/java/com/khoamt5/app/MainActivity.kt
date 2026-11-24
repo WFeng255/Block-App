@@ -5,6 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.Drawable
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,8 +15,10 @@ import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.BaseAdapter
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
@@ -431,6 +436,11 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    /** Bỏ dấu và chữ hoa để gõ "facebook" hay "zalo" đều tìm ra, kể cả tên có dấu. */
+    private fun fold(s: String): String =
+        java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "").replace('đ', 'd').replace('Đ', 'D').lowercase()
+
     private fun showAppPicker(
         names: Map<String, String>, icons: Map<String, Drawable>, selected: Set<String>
     ) {
@@ -438,15 +448,18 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Không đọc được danh sách app", Toast.LENGTH_SHORT).show()
             return
         }
-        val pkgs = names.keys.sortedWith(
+        val all = names.keys.sortedWith(
             compareBy<String>({ if (it in selected) 0 else 1 }, { names[it]!!.lowercase() })
         )
-        val checked = BooleanArray(pkgs.size) { pkgs[it] in selected }
+        val folded = HashMap<String, String>()
+        for (p in all) folded[p] = fold(names[p] ?: p)
+        val sel = HashSet<String>(selected)
+        val shown = ArrayList<String>(all)
         val iconSize = Ui.dp(this, 40)
 
         val adapter = object : BaseAdapter() {
-            override fun getCount(): Int = pkgs.size
-            override fun getItem(position: Int): Any = pkgs[position]
+            override fun getCount(): Int = shown.size
+            override fun getItem(position: Int): Any = shown[position]
             override fun getItemId(position: Int): Long = position.toLong()
             override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
                 val row: LinearLayout
@@ -468,10 +481,10 @@ class MainActivity : Activity() {
                     cb.isFocusable = false
                     row.addView(cb)
                 }
-                val pkg = pkgs[position]
+                val pkg = shown[position]
                 (row.getChildAt(0) as ImageView).setImageDrawable(icons[pkg])
                 (row.getChildAt(1) as TextView).text = names[pkg] ?: pkg
-                (row.getChildAt(2) as CheckBox).isChecked = checked[position]
+                (row.getChildAt(2) as CheckBox).isChecked = pkg in sel
                 return row
             }
         }
@@ -480,23 +493,53 @@ class MainActivity : Activity() {
         list.adapter = adapter
         list.divider = null
         list.setOnItemClickListener { _, _, pos, _ ->
-            checked[pos] = !checked[pos]
+            val p = shown[pos]
+            if (!sel.remove(p)) sel.add(p)
             adapter.notifyDataSetChanged()
         }
 
-        Ui.dialog(this)
-            .setTitle("Chọn app cần khóa")
-            .setView(list)
-            .setPositiveButton("Lưu") { _, _ ->
-                val result = HashSet<String>()
-                for (i in pkgs.indices) {
-                    if (checked[i]) result.add(pkgs[i])
+        val search = EditText(this)
+        search.hint = "Gõ tên app để tìm"
+        search.setTextColor(Ui.TEXT)
+        search.setHintTextColor(Ui.MUTED)
+        search.textSize = 15f
+        search.isSingleLine = true
+        search.inputType = InputType.TYPE_CLASS_TEXT
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val q = fold((s?.toString() ?: "").trim())
+                shown.clear()
+                for (p in all) {
+                    if (q.isEmpty() || (folded[p] ?: "").contains(q)) shown.add(p)
                 }
-                LockStore.setLockedPackages(this, result)
+                adapter.notifyDataSetChanged()
+            }
+        })
+
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        val sp = LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP)
+        sp.leftMargin = Ui.dp(this, 20)
+        sp.rightMargin = Ui.dp(this, 20)
+        box.addView(search, sp)
+        val listH = (resources.displayMetrics.heightPixels * 0.5f).toInt()
+        box.addView(list, LinearLayout.LayoutParams(Ui.MATCH, listH))
+
+        val dlg = Ui.dialog(this)
+            .setTitle("Chọn app cần khóa")
+            .setView(box)
+            .setPositiveButton("Lưu") { _, _ ->
+                LockStore.setLockedPackages(this, HashSet(sel))
                 refresh()
             }
             .setNegativeButton("Hủy", null)
             .show()
+        dlg.window?.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+        )
     }
 
     // ---------- Lời nhắc và ghi chú ----------

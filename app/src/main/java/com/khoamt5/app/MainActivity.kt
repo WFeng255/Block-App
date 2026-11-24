@@ -4,13 +4,19 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.ViewGroup
+import android.widget.BaseAdapter
+import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -396,33 +402,91 @@ class MainActivity : Activity() {
 
     private fun pickApps() {
         if (LockStore.isLocked(this)) return
-        val pm = packageManager
-        val protectedPk = LockStore.protectedPackages(this)
-        val selected = LockStore.lockedPackages(this)
-        val map = LinkedHashMap<String, String>()
-        try {
-            val infos = pm.queryIntentActivities(
-                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0
-            )
-            for (ri in infos) {
-                val p = ri.activityInfo.packageName
-                if (p in protectedPk) continue
-                map[p] = ri.loadLabel(pm).toString()
+        Toast.makeText(this, "Đang tải danh sách app…", Toast.LENGTH_SHORT).show()
+        // Đọc nhãn và biểu tượng của mọi app ở luồng nền để khỏi đứng hình.
+        Thread {
+            val pm = packageManager
+            val protectedPk = LockStore.protectedPackages(this)
+            val selected = LockStore.lockedPackages(this)
+            val names = LinkedHashMap<String, String>()
+            val icons = HashMap<String, Drawable>()
+            try {
+                val infos = pm.queryIntentActivities(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0
+                )
+                for (ri in infos) {
+                    val p = ri.activityInfo.packageName
+                    if (p in protectedPk || names.containsKey(p)) continue
+                    names[p] = ri.loadLabel(pm).toString()
+                    try {
+                        icons[p] = ri.loadIcon(pm)
+                    } catch (_: Exception) {
+                    }
+                }
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
-        }
-        if (map.isEmpty()) {
+            runOnUiThread {
+                if (!isFinishing) showAppPicker(names, icons, selected)
+            }
+        }.start()
+    }
+
+    private fun showAppPicker(
+        names: Map<String, String>, icons: Map<String, Drawable>, selected: Set<String>
+    ) {
+        if (names.isEmpty()) {
             Toast.makeText(this, "Không đọc được danh sách app", Toast.LENGTH_SHORT).show()
             return
         }
-        val pkgs = map.keys.sortedWith(
-            compareBy<String>({ if (it in selected) 0 else 1 }, { map[it]!!.lowercase() })
+        val pkgs = names.keys.sortedWith(
+            compareBy<String>({ if (it in selected) 0 else 1 }, { names[it]!!.lowercase() })
         )
-        val names = Array(pkgs.size) { map[pkgs[it]] ?: pkgs[it] }
         val checked = BooleanArray(pkgs.size) { pkgs[it] in selected }
+        val iconSize = Ui.dp(this, 40)
+
+        val adapter = object : BaseAdapter() {
+            override fun getCount(): Int = pkgs.size
+            override fun getItem(position: Int): Any = pkgs[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                val row: LinearLayout
+                if (convertView is LinearLayout) {
+                    row = convertView
+                } else {
+                    row = LinearLayout(this@MainActivity)
+                    row.orientation = LinearLayout.HORIZONTAL
+                    row.gravity = Gravity.CENTER_VERTICAL
+                    row.setPadding(Ui.dp(row.context, 20), Ui.dp(row.context, 8), Ui.dp(row.context, 16), Ui.dp(row.context, 8))
+                    row.addView(ImageView(row.context), LinearLayout.LayoutParams(iconSize, iconSize))
+                    val tv = Ui.text(row.context, "", 15f, Ui.TEXT)
+                    val tp = LinearLayout.LayoutParams(0, Ui.WRAP, 1f)
+                    tp.leftMargin = Ui.dp(row.context, 14)
+                    tp.rightMargin = Ui.dp(row.context, 8)
+                    row.addView(tv, tp)
+                    val cb = CheckBox(row.context)
+                    cb.isClickable = false
+                    cb.isFocusable = false
+                    row.addView(cb)
+                }
+                val pkg = pkgs[position]
+                (row.getChildAt(0) as ImageView).setImageDrawable(icons[pkg])
+                (row.getChildAt(1) as TextView).text = names[pkg] ?: pkg
+                (row.getChildAt(2) as CheckBox).isChecked = checked[position]
+                return row
+            }
+        }
+
+        val list = ListView(this)
+        list.adapter = adapter
+        list.divider = null
+        list.setOnItemClickListener { _, _, pos, _ ->
+            checked[pos] = !checked[pos]
+            adapter.notifyDataSetChanged()
+        }
+
         Ui.dialog(this)
             .setTitle("Chọn app cần khóa")
-            .setMultiChoiceItems(names, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setView(list)
             .setPositiveButton("Lưu") { _, _ ->
                 val result = HashSet<String>()
                 for (i in pkgs.indices) {

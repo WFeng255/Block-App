@@ -36,7 +36,7 @@ class WatcherService : Service() {
         private const val EV_BG = 2          // app xuống nền
         private const val EV_SCREEN_OFF = 16 // tắt màn hình
         private const val POLL_MS = 300L
-        private const val SHIELD_MS = 1500L  // thời gian khóa cảm ứng sau khi rời app bị khóa
+        private const val SHIELD_MS = 1000L  // thời gian khóa cảm ứng sau khi rời app bị khóa
 
         fun start(c: Context) {
             try {

@@ -8,7 +8,7 @@ I built it to stop myself from reopening a trading app right after a losing trad
 
 Pick the apps, pick how long (15 minutes, 1 hour, until midnight, or anything from 1 minute to 24 hours), and press Lock.
 
-From then on, opening a locked app shows a full-screen cover with the countdown and a reminder you wrote yourself. After 5 seconds it sends you back to the home screen. The small × in the corner does that immediately.
+From then on, opening a locked app shows a full-screen cover with the countdown and a reminder you wrote yourself. After 3 seconds it sends you back to the home screen. The small × in the corner does that immediately.
 
 There is no stop button and no way to shorten the timer. Closing Block or rebooting the phone doesn't end the lock, and neither does setting the clock back.
 

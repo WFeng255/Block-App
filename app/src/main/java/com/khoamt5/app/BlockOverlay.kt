@@ -19,7 +19,7 @@ object BlockOverlay {
     const val OWNER_NONE = 0
     const val OWNER_ACC = 1
     const val OWNER_WATCH = 2
-    const val HOLD_MS = 5000L
+    const val HOLD_MS = 3000L
 
     var owner: Int = OWNER_NONE
         private set

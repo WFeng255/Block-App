@@ -48,6 +48,11 @@ class WatcherService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var fgPackage: String? = null
+    // App bị khóa đã báo "vào" mà chưa báo "rời"/"dừng". Màn hình chính hay đa nhiệm báo "vào" thì
+    // chưa chắc app kia đã đi (thoát đa nhiệm là quay lại thẳng app, không có sự kiện "vào" mới).
+    private val frontLocked = HashSet<String>()
+    private var homePkgs: Set<String> = emptySet()
+    private var heldSince = 0L
     private var lastEventTs = 0L
     private var lastHome = 0L
     private var lastDog = 0L
@@ -85,7 +90,20 @@ class WatcherService : Service() {
 
             // Tắt tiến trình nền của app bị khóa để lần mở sau là khởi động mới, luôn có sự kiện "vào".
             val lockedNow = LockStore.lockedPackages(this@WatcherService)
-            val cur = fgPackage
+            var front = frontLocked.firstOrNull { it in lockedNow && it !in protectedPkgs }
+            // Chốt an toàn: nếu sự kiện "rời" không bao giờ tới thì không giữ màn che mãi, tránh kẹt máy.
+            if (front != null && front != fgPackage) {
+                if (heldSince == 0L) heldSince = tNow
+                if (tNow - heldSince > 12_000L) {
+                    frontLocked.clear()
+                    heldSince = 0L
+                    front = null
+                    LockStore.diag("L2", "thả giữ: quá 12s không thấy rời")
+                }
+            } else {
+                heldSince = 0L
+            }
+            val cur = front ?: fgPackage
             val prev = lastFgForKill
             if (prev != null && prev != cur && prev in lockedNow && prev !in protectedPkgs) {
                 burstUntil = tNow + 5000L
@@ -100,7 +118,7 @@ class WatcherService : Service() {
                 killLockedInBackground(tNow)
             }
 
-            val pkg = fgPackage
+            val pkg = front ?: fgPackage
             if (pkg != null &&
                 pkg in LockStore.lockedPackages(this@WatcherService) &&
                 pkg !in protectedPkgs
@@ -112,7 +130,11 @@ class WatcherService : Service() {
                     remaining,
                     BlockOverlay.OWNER_WATCH
                 ) { goHome() }
-                if (fresh) LockStore.diag("L2", "che " + pkg + (if (ok) " ok" else " LỖI"))
+                if (fresh) LockStore.diag(
+                    "L2",
+                    "che " + pkg + (if (ok) " ok" else " LỖI") +
+                        (if (pkg != fgPackage) " [giữ: chưa thấy rời]" else "")
+                )
                 if (!ok) goHome()
             } else if (BlockOverlay.owner == BlockOverlay.OWNER_WATCH) {
                 BlockOverlay.hide()
@@ -124,6 +146,13 @@ class WatcherService : Service() {
     override fun onCreate() {
         super.onCreate()
         protectedPkgs = LockStore.protectedPackages(this)
+        homePkgs = try {
+            packageManager.queryIntentActivities(
+                Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0
+            ).map { it.activityInfo.packageName }.toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -191,6 +220,7 @@ class WatcherService : Service() {
             val e = UsageEvents.Event()
             var maxTs = lastEventTs
             val quiet = firstRefresh
+            val locked = LockStore.lockedPackages(this)
             while (events.hasNextEvent()) {
                 events.getNextEvent(e)
                 if (e.timeStamp > maxTs) maxTs = e.timeStamp
@@ -208,9 +238,25 @@ class WatcherService : Service() {
                     LockStore.diag("L2", what + " " + (if (pk == packageName) "Block" else pk) + " @" + (e.timeStamp % 100000L))
                 }
                 when (e.eventType) {
-                    EV_FG -> fgPackage = pk
-                    EV_BG -> if (pk == fgPackage) fgPackage = null
-                    EV_SCREEN_OFF -> fgPackage = null
+                    EV_FG -> {
+                        fgPackage = pk
+                        if (pk in locked && pk !in protectedPkgs) {
+                            frontLocked.clear()
+                            frontLocked.add(pk)
+                        } else if (pk !in homePkgs && pk != "com.android.systemui") {
+                            // một app thật khác lên trước: app bị khóa chắc chắn đã đi
+                            frontLocked.clear()
+                        }
+                    }
+                    EV_BG -> {
+                        if (pk == fgPackage) fgPackage = null
+                        frontLocked.remove(pk)
+                    }
+                    23 -> frontLocked.remove(pk)
+                    EV_SCREEN_OFF -> {
+                        fgPackage = null
+                        frontLocked.clear()
+                    }
                 }
             }
             firstRefresh = false

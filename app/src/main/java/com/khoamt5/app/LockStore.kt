@@ -53,12 +53,12 @@ object LockStore {
     fun diag(tag: String, msg: String) {
         val t = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         diagBuf.add("$t $tag $msg")
-        while (diagBuf.size > 60) diagBuf.removeAt(0)
+        while (diagBuf.size > 120) diagBuf.removeAt(0)
     }
 
     /** Các dòng mới nhất, dòng mới nằm trên cùng. */
     @Synchronized
-    fun diagText(max: Int = 16): String {
+    fun diagText(max: Int = 24): String {
         if (diagBuf.isEmpty()) return "(chưa có sự kiện nào)"
         return diagBuf.takeLast(max).reversed().joinToString("\n")
     }

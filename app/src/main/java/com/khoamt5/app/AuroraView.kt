@@ -35,16 +35,16 @@ class AuroraView(context: Context) : View(context) {
     private var shaderKey = -1L
 
     private val calm = intArrayOf(
-        Color.parseColor("#14B8A6"),
-        Color.parseColor("#0EA5E9"),
-        Color.parseColor("#10B981"),
-        Color.parseColor("#2563EB")
+        Color.parseColor("#12D8B8"),
+        Color.parseColor("#2CB5FF"),
+        Color.parseColor("#2FE08F"),
+        Color.parseColor("#3B82F6")
     )
     private val hot = intArrayOf(
-        Color.parseColor("#FF5A36"),
-        Color.parseColor("#F59E0B"),
-        Color.parseColor("#E11D48"),
-        Color.parseColor("#FB7185")
+        Color.parseColor("#FF6A3D"),
+        Color.parseColor("#FFB020"),
+        Color.parseColor("#FF3D6E"),
+        Color.parseColor("#FF8A65")
     )
 
     // Vị trí gốc (tỉ lệ theo chiều rộng/cao) và chu kỳ trôi của từng mảng.
@@ -75,7 +75,7 @@ class AuroraView(context: Context) : View(context) {
     }
 
     private fun rebuildShaders(radius: Float, timeMs: Long) {
-        val alpha = if (Ui.dark) 135 else 190
+        val alpha = if (Ui.dark) 170 else 205
         for (i in 0 until 4) {
             val c = blobColor(i, timeMs)
             val center = Color.argb(alpha, Color.red(c), Color.green(c), Color.blue(c))

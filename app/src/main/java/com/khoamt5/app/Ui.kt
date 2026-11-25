@@ -51,7 +51,7 @@ object Ui {
     private val L_TEXT = Color.parseColor("#12161C")
     private val D_TEXT = Color.parseColor("#F0F3F6")
     private val L_MUTED = Color.parseColor("#566070")
-    private val D_MUTED = Color.parseColor("#B9C2CE")
+    private val D_MUTED = Color.parseColor("#CBD3DD")
     private val L_LINK = Color.parseColor("#0D9488")
     private val D_LINK = Color.parseColor("#5EEAD4")
     private val L_OK = Color.parseColor("#16A34A")

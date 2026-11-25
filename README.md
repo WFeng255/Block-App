@@ -21,6 +21,8 @@ Both draw the same cover, and either one alone is enough to block.
 
 While the lock is on, Block also kills the background process of every locked app, every 1.5 seconds, and every 0.4 seconds for 5 seconds after you leave one. That sounds rough, but it's there for a reason: on my phone, going back to an app through the recents screen doesn't report that the app came to the front, so the cover never showed. A killed app has to start from scratch when you tap it, and starting always gets reported.
 
+There's a catch: if you tap the app's card in recents before it has been killed, it comes back without any report. So for 1.5 seconds after you leave a locked app, Block puts an invisible layer over the screen that swallows touches. By the time it goes away, the app is dead, and the next launch gets covered. Gestures still work, only taps on the screen don't.
+
 Block never locks itself, System UI, Settings, the phone/dialer/emergency apps, contacts, or your home launcher, so you can't lock yourself out of making a call.
 
 ### Other things in the app

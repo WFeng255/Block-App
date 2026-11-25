@@ -11,6 +11,9 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.PixelFormat
+import android.provider.Settings
+import android.view.View
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -33,6 +36,7 @@ class WatcherService : Service() {
         private const val EV_BG = 2          // app xuống nền
         private const val EV_SCREEN_OFF = 16 // tắt màn hình
         private const val POLL_MS = 300L
+        private const val SHIELD_MS = 1500L  // thời gian khóa cảm ứng sau khi rời app bị khóa
 
         fun start(c: Context) {
             try {
@@ -53,6 +57,8 @@ class WatcherService : Service() {
     private var lastFgForKill: String? = null
     private var firstRefresh = true
     private var lastKillLog = 0L
+    private var shield: View? = null
+    private var shieldUntil = 0L
     private var protectedPkgs: Set<String> = emptySet()
     private var running = false
 
@@ -64,6 +70,7 @@ class WatcherService : Service() {
                 running = false
                 Watchdog.cancel(this@WatcherService)
                 BlockOverlay.hide()
+                removeShield()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return
@@ -80,9 +87,14 @@ class WatcherService : Service() {
             val lockedNow = LockStore.lockedPackages(this@WatcherService)
             val cur = fgPackage
             val prev = lastFgForKill
-            if (prev != null && prev != cur && prev in lockedNow) burstUntil = tNow + 5000L
+            if (prev != null && prev != cur && prev in lockedNow && prev !in protectedPkgs) {
+                burstUntil = tNow + 5000L
+                shieldUntil = tNow + SHIELD_MS
+                lastKill = 0L // tắt ngay trong lượt này
+            }
             lastFgForKill = cur
-            val gap = if (tNow < burstUntil) 400L else 1500L
+            updateShield(tNow, cur != null && cur in lockedNow && cur !in protectedPkgs)
+            val gap = if (tNow < burstUntil) 250L else 1500L
             if (tNow - lastKill > gap) {
                 lastKill = tNow
                 killLockedInBackground(tNow)
@@ -141,6 +153,7 @@ class WatcherService : Service() {
     override fun onDestroy() {
         running = false
         handler.removeCallbacksAndMessages(null)
+        removeShield()
         if (BlockOverlay.owner == BlockOverlay.OWNER_WATCH) BlockOverlay.hide()
         super.onDestroy()
     }
@@ -226,6 +239,48 @@ class WatcherService : Service() {
         if (tried.isNotEmpty() && nowMs - lastKillLog > 10_000L) {
             lastKillLog = nowMs
             LockStore.diag("L2", "tắt nền " + tried.size + " app: " + tried.joinToString(", "))
+        }
+    }
+
+    /**
+     * Sau khi rời một app bị khóa, phủ một lớp trong suốt nuốt hết thao tác chạm trong ít giây,
+     * để không kịp bấm lại vào app đó từ màn hình đa nhiệm trước khi nó bị tắt nền.
+     * Nếu app bị khóa đã quay lại phía trước thì để màn che lo, bỏ lớp này.
+     */
+    private fun updateShield(nowMs: Long, lockedInFront: Boolean) {
+        val want = nowMs < shieldUntil && !lockedInFront
+        if (want && shield == null) {
+            if (!Settings.canDrawOverlays(this)) return
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+            val v = View(this)
+            v.setOnTouchListener { _, _ -> true }
+            val lp = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            )
+            try {
+                wm.addView(v, lp)
+                shield = v
+                LockStore.diag("L2", "khóa chạm " + SHIELD_MS + "ms")
+            } catch (_: Exception) {
+            }
+        } else if (!want && shield != null) {
+            removeShield()
+            if (lockedInFront) LockStore.diag("L2", "bỏ khóa chạm: app khóa đã quay lại")
+        }
+    }
+
+    private fun removeShield() {
+        val v = shield ?: return
+        shield = null
+        try {
+            (getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.removeView(v)
+        } catch (_: Exception) {
         }
     }
 

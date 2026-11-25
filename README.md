@@ -19,7 +19,7 @@ Blocking runs in two independent layers, because phone vendors like to kill back
 
 Both draw the same cover, and either one alone is enough to block.
 
-While the lock is on, Block also kills the background process of every locked app every couple of seconds. That sounds rough, but it's there for a reason: on my phone, going back to an app through the recents screen doesn't report that the app came to the front, so the cover never showed. A killed app has to start from scratch when you tap it, and starting always gets reported. A touch on a locked app also counts as "it's in front", as a second safety net.
+While the lock is on, Block also kills the background process of every locked app, every 1.5 seconds, and every 0.4 seconds for 5 seconds after you leave one. That sounds rough, but it's there for a reason: on my phone, going back to an app through the recents screen doesn't report that the app came to the front, so the cover never showed. A killed app has to start from scratch when you tap it, and starting always gets reported.
 
 Block never locks itself, System UI, Settings, the phone/dialer/emergency apps, contacts, or your home launcher, so you can't lock yourself out of making a call.
 
@@ -52,7 +52,7 @@ After installing, open Settings inside the app and grant the five permissions li
 - I've only used it on one phone, a Xiaomi (MIUI/HyperOS). Xiaomi and other vendors kill background apps aggressively, so turn on Autostart, set battery to "No restrictions", and lock Block's card in the recents screen.
 - Locked apps lose their state while the lock is on, since their background process keeps getting killed. MT5 reloads its chart when you reopen it (open trades stay, they live on the broker's server), TikTok forgets where you were, half-typed messages are gone. Notifications from locked apps mostly still arrive, but I haven't checked every app and some may come late.
 - Android doesn't let an app disable another app, only cover it, so there's always a moment between tapping and the cover showing. Usually about a second.
-- On my Xiaomi the accessibility layer shows as enabled but doesn't receive events, so only the usage layer is doing the work there. Settings tells you whether layer 1 is really connected, and has a Diagnostics box showing what each layer saw. I haven't had enough days with the kill-and-touch workaround to say it never slips.
+- On my Xiaomi the accessibility layer shows as enabled but doesn't receive events, so only the usage layer is doing the work there. Settings tells you whether layer 1 is really connected, and has a Diagnostics box showing what each layer saw. I haven't had enough days with the kill workaround to say it never slips. Banking apps (MB, for one) refuse to log in while any accessibility service is on, so on this phone I keep layer 1 switched off; layer 2 does the blocking by itself.
 - It's signed with the debug key, so each new build has to be installed after uninstalling the old one, which wipes the log. Use Share on the log screen to back it up first.
 - Locking an app doesn't close anything inside it. An open trade stays open, so set a stop loss before you walk away.
 

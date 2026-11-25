@@ -49,6 +49,9 @@ class WatcherService : Service() {
     private var lastDog = 0L
     private val seenEv = HashSet<String>()
     private var lastKill = 0L
+    private var burstUntil = 0L
+    private var lastFgForKill: String? = null
+    private var firstRefresh = true
     private var lastKillLog = 0L
     private var protectedPkgs: Set<String> = emptySet()
     private var running = false
@@ -74,7 +77,13 @@ class WatcherService : Service() {
             refreshForeground()
 
             // Tắt tiến trình nền của app bị khóa để lần mở sau là khởi động mới, luôn có sự kiện "vào".
-            if (tNow - lastKill > 2500L) {
+            val lockedNow = LockStore.lockedPackages(this@WatcherService)
+            val cur = fgPackage
+            val prev = lastFgForKill
+            if (prev != null && prev != cur && prev in lockedNow) burstUntil = tNow + 5000L
+            lastFgForKill = cur
+            val gap = if (tNow < burstUntil) 400L else 1500L
+            if (tNow - lastKill > gap) {
                 lastKill = tNow
                 killLockedInBackground(tNow)
             }
@@ -168,15 +177,14 @@ class WatcherService : Service() {
             val events = usm.queryEvents((lastEventTs - 4000L).coerceAtLeast(0L), System.currentTimeMillis())
             val e = UsageEvents.Event()
             var maxTs = lastEventTs
-            val locked = LockStore.lockedPackages(this)
+            val quiet = firstRefresh
             while (events.hasNextEvent()) {
                 events.getNextEvent(e)
                 if (e.timeStamp > maxTs) maxTs = e.timeStamp
                 val pk = e.packageName
                 // Ghi lại mọi sự kiện (trừ đổi nhóm chờ) kèm giờ của chính sự kiện, mỗi sự kiện một lần.
-                if (pk != packageName && e.eventType != 4 &&
-                    seenEv.add(e.timeStamp.toString() + "|" + e.eventType + "|" + pk)
-                ) {
+                val noise = e.eventType == 4 || e.eventType == 10 || e.eventType == 12
+                if (!noise && seenEv.add(e.timeStamp.toString() + "|" + e.eventType + "|" + pk) && !quiet) {
                     val what = when (e.eventType) {
                         EV_FG -> "vào"
                         EV_BG -> "rời"
@@ -184,19 +192,15 @@ class WatcherService : Service() {
                         7 -> "chạm"
                         else -> "t" + e.eventType
                     }
-                    LockStore.diag("L2", what + " " + pk + " @" + (e.timeStamp % 100000L))
+                    LockStore.diag("L2", what + " " + (if (pk == packageName) "Block" else pk) + " @" + (e.timeStamp % 100000L))
                 }
                 when (e.eventType) {
                     EV_FG -> fgPackage = pk
                     EV_BG -> if (pk == fgPackage) fgPackage = null
                     EV_SCREEN_OFF -> fgPackage = null
-                    // Quay lại app từ màn hình đa nhiệm trên máy này không có sự kiện "vào":
-                    // chạm vào app bị khóa cũng tính là app đang ở trên cùng.
-                    7 -> if (pk != fgPackage && pk != packageName && pk in locked && pk !in protectedPkgs) {
-                        fgPackage = pk
-                    }
                 }
             }
+            firstRefresh = false
             if (seenEv.size > 400) seenEv.clear()
             lastEventTs = maxTs
         } catch (_: Exception) {
@@ -219,7 +223,7 @@ class WatcherService : Service() {
             } catch (_: Exception) {
             }
         }
-        if (tried.isNotEmpty() && nowMs - lastKillLog > 20_000L) {
+        if (tried.isNotEmpty() && nowMs - lastKillLog > 10_000L) {
             lastKillLog = nowMs
             LockStore.diag("L2", "tắt nền " + tried.size + " app: " + tried.joinToString(", "))
         }
